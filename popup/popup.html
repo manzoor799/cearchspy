@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CearchSpy</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header__brand">
+        <div class="header__logo">C</div>
+        <div class="header__text">
+          <h1 class="header__title">CearchSpy</h1>
+          <span class="header__subtitle">Etsy Keyword Research</span>
+        </div>
+      </div>
+      <div class="header__actions">
+        <button class="icon-btn" id="btn-history" title="Scan History">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 8v4l3 3"/>
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Connection Banner -->
+    <div class="connection-bar" id="connection-bar">
+      <span class="status-dot status-dot--idle" id="status-dot"></span>
+      <span class="status-text" id="status-text">Checking Etsy tab…</span>
+    </div>
+
+    <!-- ===== VIEW: INPUT ===== -->
+    <section class="view view--active" id="view-input">
+      <div class="input-section">
+        <div class="input-header-row">
+          <label class="label" for="seed-keyword">Seed Keyword(s)</label>
+          <span class="seed-badge" id="seed-badge">1 keyword</span>
+        </div>
+        <textarea
+          class="text-input text-input--multiline"
+          id="seed-keyword"
+          rows="2"
+          placeholder="Type or paste keywords (one per line or comma-separated)"
+          autocomplete="off"
+          spellcheck="false"
+        >resume</textarea>
+
+        <!-- Quick Idea Chips for Easy 1-Click Testing -->
+        <div class="preset-row">
+          <span class="preset-label">Quick test:</span>
+          <button type="button" class="preset-chip" data-keyword="resume">📄 Resume</button>
+          <button type="button" class="preset-chip" data-keyword="wall art">🎨 Wall Art</button>
+          <button type="button" class="preset-chip" data-keyword="sticker">🏷️ Sticker</button>
+          <button type="button" class="preset-chip" data-keyword="planner">📅 Planner</button>
+        </div>
+
+        <p class="input-hint" id="input-error"></p>
+      </div>
+
+      <fieldset class="mode-fieldset">
+        <legend class="label">Search Direction</legend>
+        <label class="radio-option">
+          <input type="radio" name="scan-mode" value="both" checked>
+          <span class="radio-label"><strong>Both (Recommended)</strong> — word + A–Z &amp; A–Z + word</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="scan-mode" value="suffix">
+          <span class="radio-label"><strong>After Word</strong> — resume a, resume b …</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="scan-mode" value="prefix">
+          <span class="radio-label"><strong>Before Word</strong> — a resume, b resume …</span>
+        </label>
+      </fieldset>
+
+      <!-- Test / Bypass Toggle -->
+      <label class="toggle-card" for="test-mode-toggle">
+        <div class="toggle-card__text">
+          <span class="toggle-card__title">⚡ Instant Test Mode</span>
+          <span class="toggle-card__desc">Bypass live delays to test &amp; verify results instantly</span>
+        </div>
+        <input type="checkbox" id="test-mode-toggle" class="toggle-input">
+      </label>
+
+      <button class="btn btn--primary btn--full" id="btn-start">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Start Alphabet Scan
+      </button>
+
+      <div class="hint-box">
+        <span class="hint-box__icon">💡</span>
+        <p class="hint-box__text">
+          Types each letter A–Z directly into Etsy's search bar in real time, pulling authentic buyer search terms and filtering out UI clutter.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== VIEW: SCANNING ===== -->
+    <section class="view" id="view-scanning">
+      <div class="scan-header">
+        <div>
+          <h2 class="scan-header__title" id="scan-keyword-label">Scanning: "resume"</h2>
+          <span class="scan-header__mode" id="scan-mode-label">Seed 1 of 1 · Both mode</span>
+        </div>
+        <button class="btn btn--danger btn--sm" id="btn-cancel">Cancel</button>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-section">
+        <div class="progress-meta">
+          <span class="label">Progress</span>
+          <span class="progress-counter" id="progress-counter">0 / 52</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Letter Grids -->
+      <div class="letter-section" id="suffix-section">
+        <span class="letter-section__label">After: "<span id="suffix-label">keyword</span> + ?"</span>
+        <div class="letter-grid" id="suffix-grid"></div>
+      </div>
+      <div class="letter-section" id="prefix-section">
+        <span class="letter-section__label">Before: "? + <span id="prefix-label">keyword</span>"</span>
+        <div class="letter-grid" id="prefix-grid"></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <span class="stat-card__value" id="stat-found">0</span>
+          <span class="stat-card__label">Keywords Found</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__value" id="stat-query">A</span>
+          <span class="stat-card__label">Current Letter</span>
+        </div>
+      </div>
+
+      <!-- Live Feed -->
+      <div class="live-feed">
+        <span class="label">Live Search Movement</span>
+        <div class="live-feed__list" id="live-feed-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== VIEW: RESULTS ===== -->
+    <section class="view" id="view-results">
+      <div class="results-header">
+        <div>
+          <h2 class="results-header__title" id="results-keyword-label">"resume"</h2>
+          <span class="results-header__meta" id="results-meta">0 keywords found</span>
+        </div>
+        <button class="btn btn--secondary btn--sm" id="btn-results-new" title="New scan">
+          + New Scan
+        </button>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="results-toolbar">
+        <div class="toolbar-search-row">
+          <input type="search" class="text-input text-input--sm" id="search-results" placeholder="Filter keywords…" style="flex:1;">
+          <select class="text-input text-input--sm seed-select" id="filter-seed" title="Filter by Seed">
+            <option value="all">All Seeds</option>
+          </select>
+        </div>
+        <div class="tab-bar" id="tab-bar">
+          <button class="tab tab--active" data-filter="all" id="tab-all">All (0)</button>
+          <button class="tab" data-filter="suffix" id="tab-suffix">After (0)</button>
+          <button class="tab" data-filter="prefix" id="tab-prefix">Before (0)</button>
+        </div>
+      </div>
+
+      <!-- Select All Bar -->
+      <div class="select-bar">
+        <label class="select-bar__check">
+          <input type="checkbox" id="select-all" checked>
+          <span>Select All</span>
+        </label>
+        <span class="select-bar__count" id="selected-count">0 selected</span>
+      </div>
+
+      <!-- Table -->
+      <div class="results-table-wrap" id="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th class="col-check"></th>
+              <th class="col-num">#</th>
+              <th class="col-keyword">Keyword</th>
+              <th class="col-tag" title="Etsy tags must be ≤ 20 characters">Tag (≤20)</th>
+              <th class="col-seed">Seed</th>
+              <th class="col-ext" title="Open on Etsy"></th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-bar">
+        <button class="btn btn--primary btn--grow" id="btn-csv" title="Download CSV for Excel">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          Download CSV
+        </button>
+        <button class="btn btn--secondary" id="btn-copy-tags" title="Copy 13 tags ready for Etsy listing (≤20 chars each)">
+          🏷️ 13 Tags
+        </button>
+        <button class="btn btn--secondary" id="btn-copy" title="Copy all selected keywords">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Copy All
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== VIEW: HISTORY ===== -->
+    <section class="view" id="view-history">
+      <div class="history-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="icon-btn" id="btn-history-back" title="Back" style="width:28px;height:28px;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h2 class="history-header__title">Scan History</h2>
+        </div>
+        <button class="btn btn--danger btn--sm" id="btn-clear-history">Clear All</button>
+      </div>
+      <div class="history-list" id="history-list"></div>
+      <div class="history-empty" id="history-empty" style="display:none;">
+        <p>No saved scans yet.</p>
+        <button class="btn btn--primary btn--sm" id="btn-start-first">Start a Scan</button>
+      </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
