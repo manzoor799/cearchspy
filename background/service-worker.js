@@ -15,17 +15,50 @@ import {
 
 let activeAbortController = null;
 
-async function findEtsyTab() {
+async function findOrCreateEtsyTab(useIncognito = false) {
   try {
     const tabs = await chrome.tabs.query({ url: ['https://*.etsy.com/*', 'https://etsy.com/*'] });
     if (tabs && tabs.length > 0) {
+      if (useIncognito) {
+        const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
+        if (incognitoTab) return incognitoTab;
+      } else {
+        const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
+        if (regularTab) return regularTab;
+      }
       const active = tabs.find(t => t.active);
       return active || tabs[0];
     }
-  } catch {
-    // Fallback
+
+    if (useIncognito) {
+      let isAllowed = false;
+      try {
+        isAllowed = await chrome.extension.isAllowedIncognitoAccess();
+      } catch {
+        isAllowed = false;
+      }
+
+      if (isAllowed) {
+        const win = await chrome.windows.create({
+          url: 'https://www.etsy.com',
+          incognito: true,
+          focused: true,
+        });
+        if (win.tabs && win.tabs.length > 0) {
+          // Wait briefly for Etsy page to load in the new window
+          await new Promise(r => setTimeout(r, 2200));
+          return win.tabs[0];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('E Keyword Spy: findOrCreateEtsyTab warning', err);
   }
   return null;
+}
+
+async function findEtsyTab() {
+  return await findOrCreateEtsyTab(false);
 }
 
 async function setBadge(text, color = '#4032C9') {
@@ -47,7 +80,7 @@ function broadcast(message) {
   }
 }
 
-async function handleStartScan({ keywords, keyword, mode = 'both', testMode = false, deepExpansion = true, branchLimit = 3 }) {
+async function handleStartScan({ keywords, keyword, mode = 'both', testMode = false, deepExpansion = true, branchLimit = 3, useIncognito = true }) {
   if (activeAbortController) {
     activeAbortController.abort();
     activeAbortController = null;
@@ -58,7 +91,7 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
 
   const settings = await getSettings();
   const effectiveTestMode = testMode || settings.testMode;
-  const etsyTab = await findEtsyTab();
+  const etsyTab = await findOrCreateEtsyTab(useIncognito && !effectiveTestMode);
 
   const seedList = parseSeedKeywords(keywords || keyword);
   if (seedList.length === 0) {
@@ -230,12 +263,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'CHECK_ETSY_CONNECTION': {
       (async () => {
-        const etsyTab = await findEtsyTab();
+        let isIncognitoAllowed = false;
+        try {
+          isIncognitoAllowed = await chrome.extension.isAllowedIncognitoAccess();
+        } catch {
+          isIncognitoAllowed = false;
+        }
+
+        const tabs = await chrome.tabs.query({ url: ['https://*.etsy.com/*', 'https://etsy.com/*'] });
+        const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
+        const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
+        const activeTab = incognitoTab || regularTab || tabs[0] || null;
+
         sendResponse({
-          connected: Boolean(etsyTab),
-          tabId: etsyTab?.id || null,
-          url: etsyTab?.url || null,
+          connected: Boolean(activeTab),
+          tabId: activeTab?.id || null,
+          url: activeTab?.url || null,
+          isIncognito: Boolean(activeTab?.incognito),
+          isIncognitoAllowed,
+          hasIncognitoTab: Boolean(incognitoTab),
         });
+      })();
+      return true;
+    }
+
+    case 'OPEN_INCOGNITO_ETSY': {
+      (async () => {
+        try {
+          const isAllowed = await chrome.extension.isAllowedIncognitoAccess();
+          if (!isAllowed) {
+            sendResponse({ success: false, reason: 'NOT_ALLOWED' });
+            return;
+          }
+          const win = await chrome.windows.create({
+            url: 'https://www.etsy.com',
+            incognito: true,
+            focused: true,
+          });
+          sendResponse({ success: true, windowId: win.id });
+        } catch (err) {
+          sendResponse({ success: false, error: err.message });
+        }
       })();
       return true;
     }

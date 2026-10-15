@@ -4,6 +4,7 @@
   "short_name": "E Keyword Spy",
   "version": "1.1.0",
   "description": "Professional Etsy keyword research & Alphabet Soup expander. Uncover real buyer autocomplete suggestions across A–Z in real time.",
+  "incognito": "spanning",
   "permissions": [
     "storage",
     "tabs",

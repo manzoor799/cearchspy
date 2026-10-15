@@ -59,6 +59,8 @@ const elements = {
   deepOptionsContainer: document.getElementById('deep-options-container'),
   branchDepthGroup: document.getElementById('branch-depth-group'),
   inputError: document.getElementById('input-error'),
+  incognitoCard: document.getElementById('incognito-card'),
+  incognitoModeToggle: document.getElementById('incognito-mode-toggle'),
   testModeToggle: document.getElementById('test-mode-toggle'),
   btnStart: document.getElementById('btn-start'),
 
@@ -160,6 +162,18 @@ async function loadSavedSettings() {
   if (elements.testModeToggle) {
     elements.testModeToggle.checked = Boolean(settings.testMode);
   }
+  if (elements.incognitoModeToggle) {
+    elements.incognitoModeToggle.checked = (settings.useIncognito !== false);
+  }
+  if (elements.deepExpansionToggle) {
+    elements.deepExpansionToggle.checked = (settings.deepExpansion !== false);
+  }
+  if (settings.branchLimit && elements.branchDepthGroup) {
+    selectedBranchLimit = String(settings.branchLimit);
+    elements.branchDepthGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.classList.toggle('radio-pill--active', btn.dataset.depth === selectedBranchLimit);
+    });
+  }
 }
 
 async function checkEtsyConnection() {
@@ -168,12 +182,22 @@ async function checkEtsyConnection() {
     const response = await chrome.runtime.sendMessage({ type: 'CHECK_ETSY_CONNECTION' });
     if (response?.connected) {
       elements.statusDot.className = 'status-dot status-dot--connected';
-      elements.statusText.textContent = 'Etsy Tab Connected (Live Search Bar Automation)';
+      if (response.isIncognito) {
+        elements.statusText.textContent = 'Incognito Etsy Tab Connected (Clean Session)';
+      } else {
+        elements.statusText.textContent = 'Etsy Tab Connected (Live Search Bar)';
+      }
     } else {
       elements.statusDot.className = 'status-dot status-dot--idle';
-      elements.statusText.textContent = elements.testModeToggle?.checked
-        ? 'Instant Test Mode (Ready)'
-        : 'Standalone Mode (Direct API)';
+      if (elements.testModeToggle?.checked) {
+        elements.statusText.textContent = 'Instant Test Mode (Ready)';
+      } else if (elements.incognitoModeToggle?.checked) {
+        elements.statusText.textContent = response?.isIncognitoAllowed
+          ? 'Incognito Mode Ready (Opens upon start)'
+          : 'Incognito not allowed in Chrome extension settings';
+      } else {
+        elements.statusText.textContent = 'Standalone Mode (Direct API)';
+      }
     }
   } catch {
     elements.statusDot.className = 'status-dot status-dot--idle';
@@ -705,6 +729,15 @@ function bindEvents() {
     });
   }
 
+  // Incognito Mode Toggle
+  if (elements.incognitoModeToggle) {
+    elements.incognitoModeToggle.addEventListener('change', async (e) => {
+      await saveSettings({ useIncognito: e.target.checked });
+      await checkEtsyConnection();
+      showToast(e.target.checked ? 'Incognito Mode enabled' : 'Incognito Mode disabled');
+    });
+  }
+
   // Instant Test Mode Toggle
   if (elements.testModeToggle) {
     elements.testModeToggle.addEventListener('change', async (e) => {
@@ -922,11 +955,12 @@ async function handleStartScanClick() {
   const testMode = elements.testModeToggle?.checked || false;
   const deepExpansion = elements.deepExpansionToggle ? elements.deepExpansionToggle.checked : true;
   const branchLimit = selectedBranchLimit;
+  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : true;
 
   try {
     await chrome.runtime.sendMessage({
       type: 'START_SCAN',
-      payload: { keywords: seedList, mode, testMode, deepExpansion, branchLimit },
+      payload: { keywords: seedList, mode, testMode, deepExpansion, branchLimit, useIncognito },
     });
   } catch (err) {
     showToast(`Failed to start scan: ${err.message}`);
