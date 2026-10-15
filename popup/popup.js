@@ -35,6 +35,8 @@ let selectedIndices = new Set();
 let activeScanData = null;
 let selectedBranchLimit = '3';
 let selectedRound2Limit = '5';
+let selectedPacingMode = 'safe';
+let selectedPacingDelay = 380;
 
 // Views
 const views = {
@@ -65,6 +67,9 @@ const elements = {
   round2ExpansionToggle: document.getElementById('round2-expansion-toggle'),
   round2OptionsContainer: document.getElementById('round2-options-container'),
   round2DepthGroup: document.getElementById('round2-depth-group'),
+  cardPacingMode: document.getElementById('card-pacing-mode'),
+  pacingBadge: document.getElementById('pacing-badge'),
+  pacingModeGroup: document.getElementById('pacing-mode-group'),
   inputError: document.getElementById('input-error'),
   incognitoCard: document.getElementById('incognito-card'),
   incognitoModeToggle: document.getElementById('incognito-mode-toggle'),
@@ -77,6 +82,10 @@ const elements = {
   scanRoundBadge: document.getElementById('scan-round-badge'),
   scanModeLabel: document.getElementById('scan-mode-label'),
   btnCancel: document.getElementById('btn-cancel'),
+  captchaCard: document.getElementById('captcha-card'),
+  btnFocusEtsy: document.getElementById('btn-focus-etsy'),
+  btnResumeScan: document.getElementById('btn-resume-scan'),
+  btnSwitchTestMode: document.getElementById('btn-switch-test-mode'),
   progressCounter: document.getElementById('progress-counter'),
   progressFill: document.getElementById('progress-fill'),
   statFound: document.getElementById('stat-found'),
@@ -196,6 +205,17 @@ async function loadSavedSettings() {
       btn.classList.toggle('radio-pill--active', btn.dataset.depth === selectedRound2Limit);
     });
   }
+  if (settings.pacingMode && elements.pacingModeGroup) {
+    selectedPacingMode = settings.pacingMode;
+    selectedPacingDelay = settings.delayMs || (selectedPacingMode === 'fast' ? 180 : selectedPacingMode === 'relaxed' ? 650 : 380);
+    elements.pacingModeGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.classList.toggle('radio-pill--active', btn.dataset.pacing === selectedPacingMode);
+    });
+    if (elements.pacingBadge) {
+      const activeBtn = elements.pacingModeGroup.querySelector(`.radio-pill[data-pacing="${selectedPacingMode}"]`);
+      if (activeBtn) elements.pacingBadge.textContent = activeBtn.textContent.trim();
+    }
+  }
 }
 
 async function checkEtsyConnection() {
@@ -245,7 +265,7 @@ async function rehydrateState() {
       return;
     }
 
-    if (current.status === 'running') {
+    if (current.status === 'running' || current.status === 'paused_captcha') {
       setupScanningView(current);
       switchView('scanning');
     } else if (current.status === 'completed' && current.results?.length > 0) {
@@ -266,6 +286,11 @@ async function rehydrateState() {
 
 function setupScanningView(scan) {
   activeScanData = scan;
+  const isPausedCaptcha = (scan.status === 'paused_captcha');
+  if (elements.captchaCard) {
+    elements.captchaCard.style.display = isPausedCaptcha ? 'block' : 'none';
+  }
+
   const currentSeed = scan.branchName || scan.currentSeed || scan.keyword || '';
   const seedIndex = scan.seedIndex || 1;
   const totalSeeds = scan.totalSeeds || 1;
@@ -279,7 +304,9 @@ function setupScanningView(scan) {
   }
 
   if (elements.scanKeywordLabel) {
-    if (scan.currentLetter === 'AUTO' || scan.statusMessage) {
+    if (isPausedCaptcha) {
+      elements.scanKeywordLabel.textContent = 'Paused: Security Verification Required';
+    } else if (scan.currentLetter === 'AUTO' || scan.statusMessage) {
       elements.scanKeywordLabel.textContent = scan.statusMessage || `Auto-Suggest Harvest: "${scan.currentSeed || scan.keyword}"`;
     } else {
       elements.scanKeywordLabel.textContent = `Scanning: "${currentSeed}"`;
@@ -822,6 +849,63 @@ function bindEvents() {
     });
   }
 
+  // Anti-CAPTCHA Human Pacing Pills
+  if (elements.pacingModeGroup) {
+    elements.pacingModeGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        elements.pacingModeGroup.querySelectorAll('.radio-pill').forEach(b => b.classList.remove('radio-pill--active'));
+        btn.classList.add('radio-pill--active');
+        selectedPacingMode = btn.dataset.pacing || 'safe';
+        selectedPacingDelay = Number(btn.dataset.delay) || 380;
+        if (elements.pacingBadge) {
+          elements.pacingBadge.textContent = btn.textContent.trim();
+        }
+        await saveSettings({ pacingMode: selectedPacingMode, delayMs: selectedPacingDelay });
+      });
+    });
+  }
+
+  // Focus Etsy Tab Button (Solve Slider)
+  if (elements.btnFocusEtsy) {
+    elements.btnFocusEtsy.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ type: 'FOCUS_ETSY_TAB' });
+    });
+  }
+
+  // Resume Scan Button
+  if (elements.btnResumeScan) {
+    elements.btnResumeScan.addEventListener('click', async () => {
+      showToast('Checking verification status...');
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'RESUME_SCAN' });
+        if (res && res.stillChallenged) {
+          showToast(res.message || 'Verification challenge still detected on Etsy', 3500);
+        } else if (res && res.success) {
+          if (elements.captchaCard) elements.captchaCard.style.display = 'none';
+          showToast('Verification resolved. Resuming scan...');
+        }
+      } catch (err) {
+        showToast(`Resume error: ${err.message}`);
+      }
+    });
+  }
+
+  // Switch to Instant Mode Button
+  if (elements.btnSwitchTestMode) {
+    elements.btnSwitchTestMode.addEventListener('click', async () => {
+      showToast('Switching to Instant Test Mode...');
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'RESUME_SCAN', overrideTestMode: true });
+        if (res && res.success) {
+          if (elements.captchaCard) elements.captchaCard.style.display = 'none';
+          showToast('Resuming in Instant Test Mode...');
+        }
+      } catch (err) {
+        showToast(`Error: ${err.message}`);
+      }
+    });
+  }
+
   // Start Scan CTA
   if (elements.btnStart) {
     elements.btnStart.addEventListener('click', handleStartScanClick);
@@ -844,7 +928,7 @@ function bindEvents() {
     elements.incognitoModeToggle.addEventListener('change', async (e) => {
       await saveSettings({ useIncognito: e.target.checked });
       await checkEtsyConnection();
-      showToast(e.target.checked ? 'Incognito Mode enabled' : 'Incognito Mode disabled');
+      showToast(e.target.checked ? 'Incognito Mode enabled' : 'Standard Session enabled');
     });
   }
 
@@ -1015,6 +1099,12 @@ function bindEvents() {
         showToast(`Scan complete. Found ${message.scan.results.length} keywords.`);
         break;
 
+      case 'SCAN_PAUSED_CAPTCHA':
+        if (elements.captchaCard) elements.captchaCard.style.display = 'block';
+        if (elements.scanKeywordLabel) elements.scanKeywordLabel.textContent = 'Paused: Security Verification';
+        showToast('Etsy security verification slider detected. Please solve on Etsy.', 4500);
+        break;
+
       case 'SCAN_CANCELLED':
         showToast('Scan cancelled');
         switchView('input');
@@ -1037,10 +1127,13 @@ function bindEvents() {
         if (!views.input.classList.contains('view--active')) {
           switchView('input');
         }
-      } else if (next.status === 'running') {
+      } else if (next.status === 'running' || next.status === 'paused_captcha') {
         if (!views.scanning.classList.contains('view--active')) {
           setupScanningView(next);
           switchView('scanning');
+        } else if (next.status === 'paused_captcha' && elements.captchaCard) {
+          elements.captchaCard.style.display = 'block';
+          if (elements.scanKeywordLabel) elements.scanKeywordLabel.textContent = 'Paused: Security Verification';
         }
       }
     }
@@ -1067,7 +1160,9 @@ async function handleStartScanClick() {
   const branchLimit = selectedBranchLimit;
   const round2Expansion = elements.round2ExpansionToggle ? elements.round2ExpansionToggle.checked : true;
   const round2Limit = selectedRound2Limit;
-  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : true;
+  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : false;
+  const delayMs = selectedPacingDelay;
+  const pacingMode = selectedPacingMode;
 
   try {
     await chrome.runtime.sendMessage({
@@ -1075,6 +1170,8 @@ async function handleStartScanClick() {
       payload: {
         keywords: seedList,
         mode,
+        delayMs,
+        pacingMode,
         testMode,
         deepExpansion,
         branchLimit,
@@ -1120,7 +1217,9 @@ async function handleDeepExpandClick() {
 
   const mode = document.querySelector('input[name="scan-mode"]:checked')?.value || 'both';
   const testMode = elements.testModeToggle?.checked || false;
-  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : true;
+  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : false;
+  const delayMs = selectedPacingDelay;
+  const pacingMode = selectedPacingMode;
 
   showToast(`Starting Round 2 long-tail expansion on ${effectiveCandidates.length} keywords...`);
 
@@ -1130,6 +1229,8 @@ async function handleDeepExpandClick() {
       payload: {
         keywords: effectiveCandidates,
         mode,
+        delayMs,
+        pacingMode,
         testMode,
         deepExpansion: false,
         branchLimit: 1,

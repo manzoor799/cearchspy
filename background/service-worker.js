@@ -5,7 +5,7 @@
  * Supports multi-seed keyword batch queues.
  */
 
-import { runScan, parseSeedKeywords } from '../lib/etsy-api.js';
+import { runScan, parseSeedKeywords, CaptchaError } from '../lib/etsy-api.js';
 import {
   getCurrentScan,
   setCurrentScan,
@@ -14,6 +14,7 @@ import {
 } from '../lib/storage.js';
 
 let activeAbortController = null;
+let pausedScanParams = null;
 
 async function findOrCreateEtsyTab(useIncognito = false) {
   try {
@@ -251,11 +252,61 @@ async function handleStartScan({
       chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
     }
 
+    pausedScanParams = null;
     broadcast({ type: 'SCAN_COMPLETED', scan: scanState });
   } catch (error) {
+    if (error.name === 'CaptchaError' || error instanceof CaptchaError || error.message?.includes('verification challenge') || error.message?.includes('403')) {
+      console.warn('E Keyword Spy: Scan paused due to Etsy verification challenge:', error);
+      scanState.status = 'paused_captcha';
+      scanState.captchaMessage = error.message;
+      scanState.captchaTime = Date.now();
+      scanState.tabId = etsyTab?.id || null;
+
+      // Retain paused scan parameters for 1-click seamless resume
+      pausedScanParams = {
+        payload: {
+          keywords: seedList,
+          mode,
+          testMode: effectiveTestMode,
+          deepExpansion,
+          branchLimit,
+          isRound2,
+          round2Expansion: effectiveRound2Expansion,
+          round2Limit: effectiveRound2Limit,
+          initialResults: scanState.results, // Retain ALL keywords found so far!
+          rootSeed: scanState.rootSeed,
+          useIncognito,
+        },
+        tabId: etsyTab?.id || null,
+      };
+
+      await setCurrentScan(scanState);
+      await setBadge('VERIF', '#D97706');
+
+      // Bring Etsy tab to front so user immediately sees the slider
+      if (etsyTab?.id) {
+        try {
+          await chrome.tabs.update(etsyTab.id, { active: true });
+          if (etsyTab.windowId) {
+            await chrome.windows.update(etsyTab.windowId, { focused: true });
+          }
+        } catch {}
+      }
+
+      broadcast({
+        type: 'SCAN_PAUSED_CAPTCHA',
+        scan: scanState,
+        tabId: etsyTab?.id || null,
+        message: 'Etsy security verification slider detected. Please slide the slider on Etsy, then click Resume.',
+      });
+      return;
+    }
+
     if (etsyTab?.id) {
       chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
     }
+
+    pausedScanParams = null;
 
     if (error.name === 'AbortError') {
       scanState.status = 'cancelled';
@@ -280,19 +331,86 @@ async function handleCancelScan() {
     activeAbortController = null;
   }
 
+  pausedScanParams = null;
   const etsyTab = await findEtsyTab();
   if (etsyTab?.id) {
     chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
   }
 
   const current = await getCurrentScan();
-  if (current && current.status === 'running') {
+  if (current && (current.status === 'running' || current.status === 'paused_captcha')) {
     current.status = 'cancelled';
     await setCurrentScan(current);
   }
 
   await setBadge('');
   broadcast({ type: 'SCAN_CANCELLED' });
+}
+
+async function handleResumeScan(overrideTestMode = false) {
+  const current = await getCurrentScan();
+  if (!current || (current.status !== 'paused_captcha' && current.status !== 'running')) {
+    return { success: false, message: 'No paused scan to resume' };
+  }
+
+  const tabId = pausedScanParams?.tabId || current.tabId;
+
+  // If overrideTestMode is requested, resume with testMode immediately
+  if (overrideTestMode) {
+    const payload = pausedScanParams?.payload || {
+      keywords: current.seedList || [current.keyword],
+      mode: current.mode || 'both',
+      testMode: true,
+      deepExpansion: current.deepExpansion !== false,
+      branchLimit: current.branchLimit || 3,
+      isRound2: Boolean(current.isRound2),
+      round2Expansion: current.round2Expansion !== false,
+      round2Limit: current.round2Limit || 5,
+      initialResults: current.results || [],
+      rootSeed: current.rootSeed || current.keyword,
+      useIncognito: false,
+    };
+    payload.testMode = true;
+    current.status = 'running';
+    await setCurrentScan(current);
+    handleStartScan(payload);
+    return { success: true, testMode: true };
+  }
+
+  // Check if Etsy tab has resolved the slider
+  if (tabId) {
+    try {
+      const verif = await chrome.tabs.sendMessage(tabId, { type: 'CHECK_VERIFICATION_RESOLVED' });
+      if (verif && !verif.resolved) {
+        // Bring Etsy tab to front again
+        try {
+          await chrome.tabs.update(tabId, { active: true });
+        } catch {}
+        return { success: false, stillChallenged: true, message: 'Verification slider is still present on Etsy. Please slide to secure access.' };
+      }
+    } catch {
+      // Content script response unavailable
+    }
+  }
+
+  const payload = pausedScanParams?.payload || {
+    keywords: current.seedList || [current.keyword],
+    mode: current.mode || 'both',
+    testMode: false,
+    deepExpansion: current.deepExpansion !== false,
+    branchLimit: current.branchLimit || 3,
+    isRound2: Boolean(current.isRound2),
+    round2Expansion: current.round2Expansion !== false,
+    round2Limit: current.round2Limit || 5,
+    initialResults: current.results || [],
+    rootSeed: current.rootSeed || current.keyword,
+    useIncognito: current.useIncognito || false,
+  };
+
+  current.status = 'running';
+  await setCurrentScan(current);
+  handleStartScan(payload);
+  return { success: true };
 }
 
 // Runtime Message Router
@@ -312,6 +430,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
         await handleCancelScan();
         sendResponse({ success: true });
+      })();
+      return true;
+    }
+
+    case 'RESUME_SCAN': {
+      (async () => {
+        const result = await handleResumeScan(Boolean(message.overrideTestMode));
+        sendResponse(result);
+      })();
+      return true;
+    }
+
+    case 'CHECK_CAPTCHA_RESOLVED': {
+      (async () => {
+        const current = await getCurrentScan();
+        const tabId = pausedScanParams?.tabId || current?.tabId;
+        if (!tabId) {
+          sendResponse({ resolved: true });
+          return;
+        }
+        try {
+          const verif = await chrome.tabs.sendMessage(tabId, { type: 'CHECK_VERIFICATION_RESOLVED' });
+          sendResponse(verif || { resolved: true });
+        } catch {
+          sendResponse({ resolved: true });
+        }
+      })();
+      return true;
+    }
+
+    case 'FOCUS_ETSY_TAB': {
+      (async () => {
+        const current = await getCurrentScan();
+        const tabId = message.tabId || pausedScanParams?.tabId || current?.tabId;
+        if (tabId) {
+          try {
+            const tab = await chrome.tabs.get(tabId);
+            await chrome.tabs.update(tabId, { active: true });
+            if (tab.windowId) {
+              await chrome.windows.update(tab.windowId, { focused: true });
+            }
+            sendResponse({ success: true });
+            return;
+          } catch {}
+        }
+        sendResponse({ success: false });
       })();
       return true;
     }

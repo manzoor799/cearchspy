@@ -188,14 +188,124 @@
     return suggestions;
   }
 
+  /**
+   * Detects whether Etsy or DataDome has displayed a CAPTCHA / slider verification challenge.
+   * @returns {boolean}
+   */
+  function isVerificationChallengePresent() {
+    try {
+      const url = window.location.href || '';
+      const title = document.title || '';
+      const bodyText = document.body ? document.body.innerText || '' : '';
+
+      // 1. Check URL query & hash
+      if (url.includes('dd_referrer') || url.includes('datadome') || url.includes('captcha-delivery.com')) {
+        return true;
+      }
+
+      // 2. Check document title
+      const lowerTitle = title.toLowerCase();
+      if (
+        lowerTitle.includes('verification required') ||
+        lowerTitle.includes('robot or human') ||
+        lowerTitle.includes('security check') ||
+        lowerTitle.includes('access denied') ||
+        lowerTitle.includes('datadome')
+      ) {
+        return true;
+      }
+
+      // 3. Check for DataDome iframe or elements
+      const captchaIframe = document.querySelector(
+        'iframe[src*="captcha-delivery.com"], iframe[src*="datadome"], [data-dd-captcha], #dd-captcha, .datadome-slider, #captcha-box'
+      );
+      if (captchaIframe) return true;
+
+      // 4. Check for challenge slider text in DOM
+      if (
+        bodyText.includes('Slide right to secure your access') ||
+        bodyText.includes('Slide right to continue') ||
+        (bodyText.includes('Verification Required') && bodyText.includes('Etsy'))
+      ) {
+        return true;
+      }
+    } catch {
+      // Fallback
+    }
+    return false;
+  }
+
+  /**
+   * Displays an amber alert HUD on Etsy when a verification challenge is detected.
+   */
+  function showCaptchaPausedIndicator() {
+    if (!activeIndicator) {
+      activeIndicator = document.createElement('div');
+      activeIndicator.id = 'ekeywordspy-page-indicator';
+      document.body.appendChild(activeIndicator);
+    }
+    Object.assign(activeIndicator.style, {
+      position: 'fixed',
+      bottom: '24px',
+      right: '24px',
+      zIndex: '9999999',
+      backgroundColor: '#FFFFFF',
+      color: '#0F172A',
+      padding: '8px 16px 8px 10px',
+      borderRadius: '9999px',
+      fontSize: '12px',
+      fontWeight: '600',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      boxShadow: '0 8px 24px rgba(217, 119, 6, 0.25)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      border: '1.5px solid #F59E0B',
+      pointerEvents: 'none',
+      transition: 'all 0.18s ease',
+    });
+    activeIndicator.innerHTML = `
+      <span style="background:#D97706;color:#FFFFFF;font-weight:700;border-radius:4px;padding:2px 7px;font-size:11px;line-height:14px;letter-spacing:0.02em;">VERIFICATION REQUIRED</span>
+      <span style="color:#92400E;font-weight:600;font-size:12px;">Slide the slider on this page to continue</span>
+    `;
+  }
+
   // Runtime Message Listener
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'ETSY_PING') {
-      sendResponse({ success: true, url: window.location.href });
+      const challenged = isVerificationChallengePresent();
+      sendResponse({ success: true, url: window.location.href, challenged });
+      return false;
+    }
+
+    if (message.type === 'CHECK_VERIFICATION_RESOLVED') {
+      const challenged = isVerificationChallengePresent();
+      const hasSearchInput = Boolean(findSearchInput());
+      if (!challenged) {
+        hideStatusIndicator();
+      }
+      sendResponse({
+        resolved: !challenged,
+        captchaDetected: challenged,
+        hasSearchInput,
+        url: window.location.href,
+      });
       return false;
     }
 
     if (message.type === 'ETSY_SCAN_PROBE') {
+      // Check if challenge screen is currently active
+      if (isVerificationChallengePresent()) {
+        showCaptchaPausedIndicator();
+        sendResponse({
+          success: false,
+          captchaDetected: true,
+          url: window.location.href,
+          message: 'Etsy verification slider challenge detected on page',
+        });
+        return false;
+      }
+
       (async () => {
         const query = message.query;
         const seedIndex = message.seedIndex || 1;
@@ -218,6 +328,17 @@
           if (message.typingDelayMs) {
             await new Promise(r => setTimeout(r, message.typingDelayMs));
           }
+        }
+
+        // Check again after typing in case challenge was triggered
+        if (isVerificationChallengePresent()) {
+          showCaptchaPausedIndicator();
+          sendResponse({
+            success: false,
+            captchaDetected: true,
+            url: window.location.href,
+          });
+          return;
         }
 
         // 3. Extract real-time suggestions from Etsy same-origin API
