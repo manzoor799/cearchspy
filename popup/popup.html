@@ -28,10 +28,16 @@
       </div>
     </header>
 
-    <!-- Connection Status Bar -->
-    <div class="connection-bar" id="connection-bar">
-      <span class="status-dot status-dot--connected" id="status-dot"></span>
-      <span class="status-text" id="status-text">Checking Etsy tab connection…</span>
+    <!-- Active Domain & Connection Bar -->
+    <div class="active-domain-bar" id="connection-bar">
+      <div class="active-domain-bar__info">
+        <span class="active-domain-bar__label">ACTIVE DOMAIN</span>
+        <span class="active-domain-bar__name">etsy.com</span>
+      </div>
+      <div class="status-pill status-pill--connected" id="status-pill">
+        <span class="status-dot status-dot--connected" id="status-dot"></span>
+        <span class="status-text" id="status-text">Connected</span>
+      </div>
     </div>
 
     <!-- =====================================================
@@ -41,7 +47,10 @@
       <!-- Seed Keywords Card -->
       <div class="card">
         <div class="card__header">
-          <label class="card__label" for="seed-keyword">Seed Keyword(s)</label>
+          <div class="card__title-group">
+            <span class="card__pill">SEED KEYWORDS</span>
+            <h2 class="card__title">Etsy Search Autocomplete</h2>
+          </div>
           <span class="badge badge--brand" id="seed-badge">1 keyword ready</span>
         </div>
         <textarea
@@ -57,10 +66,10 @@
         <div class="preset-group">
           <span class="preset-label">Quick preset:</span>
           <div class="preset-chips">
-            <button type="button" class="preset-chip" data-keyword="resume template">Resume</button>
-            <button type="button" class="preset-chip" data-keyword="wedding invitation">Wedding</button>
-            <button type="button" class="preset-chip" data-keyword="sticker pack">Sticker</button>
-            <button type="button" class="preset-chip" data-keyword="digital planner">Planner</button>
+            <button type="button" class="preset-chip" data-keyword="resume template">resume template</button>
+            <button type="button" class="preset-chip" data-keyword="wedding invitation">wedding invitation</button>
+            <button type="button" class="preset-chip" data-keyword="sticker pack">sticker pack</button>
+            <button type="button" class="preset-chip" data-keyword="digital planner">digital planner</button>
           </div>
         </div>
 
@@ -69,7 +78,12 @@
 
       <!-- Search Direction Card -->
       <fieldset class="card mode-fieldset">
-        <legend class="card__label">Search Direction</legend>
+        <div class="card__header">
+          <div class="card__title-group">
+            <span class="card__pill">SEARCH DIRECTION</span>
+            <legend class="card__title">Alphabet Expansion</legend>
+          </div>
+        </div>
         <label class="radio-row">
           <input type="radio" name="scan-mode" value="both" checked>
           <span class="radio-text">
@@ -93,7 +107,10 @@
       <!-- Instant Test Mode Toggle Card -->
       <label class="card toggle-card" for="test-mode-toggle">
         <div class="toggle-card__info">
-          <span class="toggle-card__title">Instant Test Mode</span>
+          <div class="card__title-group">
+            <span class="card__pill">TURBO MODE</span>
+            <span class="toggle-card__title">Instant Verification</span>
+          </div>
           <span class="toggle-card__desc">Bypass live delays to test &amp; verify results instantly</span>
         </div>
         <input type="checkbox" id="test-mode-toggle" class="form-checkbox">
@@ -137,7 +154,10 @@
         <!-- Progress Bar -->
         <div class="card progress-card">
           <div class="progress-meta">
-            <span class="card__label">Progress</span>
+            <div class="card__title-group">
+              <span class="card__pill">PROGRESS</span>
+              <span class="card__title">Scan Execution</span>
+            </div>
             <span class="progress-counter" id="progress-counter">0 / 52 queries</span>
           </div>
           <div class="progress-track">
@@ -163,19 +183,28 @@
 
         <!-- Letter Grid: After Word -->
         <div class="card letter-card" id="suffix-section">
-          <span class="card__label letter-card__label">After: "<span id="suffix-label">keyword</span> + ?"</span>
+          <div class="card__title-group" style="margin-bottom:8px;">
+            <span class="card__pill">SUFFIX</span>
+            <span class="card__title">After: "<span id="suffix-label">keyword</span> + ?"</span>
+          </div>
           <div class="letter-grid" id="suffix-grid"></div>
         </div>
 
         <!-- Letter Grid: Before Word -->
         <div class="card letter-card" id="prefix-section">
-          <span class="card__label letter-card__label">Before: "? + <span id="prefix-label">keyword</span>"</span>
+          <div class="card__title-group" style="margin-bottom:8px;">
+            <span class="card__pill">PREFIX</span>
+            <span class="card__title">Before: "? + <span id="prefix-label">keyword</span>"</span>
+          </div>
           <div class="letter-grid" id="prefix-grid"></div>
         </div>
 
         <!-- Live Feed -->
         <div class="card feed-card">
-          <span class="card__label">Live Search Movement</span>
+          <div class="card__title-group" style="margin-bottom:6px;">
+            <span class="card__pill">LIVE MONITOR</span>
+            <span class="card__title">Real-Time Search Bar Movement</span>
+          </div>
           <div class="feed-list" id="live-feed-list"></div>
         </div>
       </div>
@@ -288,7 +317,10 @@
               <polyline points="12 19 5 12 12 5"/>
             </svg>
           </button>
-          <h2 class="history-header__title">Scan History</h2>
+          <div class="card__title-group">
+            <span class="card__pill">HISTORY</span>
+            <h2 class="history-header__title">Past Research Sessions</h2>
+          </div>
         </div>
         <button class="btn btn--link-danger btn--sm" id="btn-clear-history">Clear All</button>
       </div>

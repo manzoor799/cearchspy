@@ -1,6 +1,6 @@
 /* =====================================================
-   E Keyword Spy — Official Brand Design System
-   Exact Reference Schema & Token Mappings
+   E Keyword Spy — Official White-Light Design System
+   Exact Reference Schema & Component Styling
    ===================================================== */
 
 /* --- Reset & Global Box Sizing --- */
@@ -50,10 +50,10 @@
   --danger-border:        #FECACA;
   --danger-text:          #B91C1C;
 
-  /* --- Ambient Box Shadows --- */
-  --shadow-card:          -2px 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-dock:          -2px 4px 12px rgba(15, 23, 42, 0.10);
-  --shadow-sm:            0 1px 2px rgba(15, 23, 42, 0.05);
+  /* --- Ambient Soft Shadows --- */
+  --shadow-card:          0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --shadow-dock:          -2px 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-sm:            0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-float:         -2px 4px 12px rgba(15, 23, 42, 0.12);
 
   /* --- System Typography Stack --- */
@@ -82,7 +82,7 @@ body {
 }
 
 /* =====================================================
-   HEADER BAR
+   HEADER BAR (VIBRANT ROYAL INDIGO)
    ===================================================== */
 .header {
   display: flex;
@@ -177,19 +177,50 @@ body {
 }
 
 /* =====================================================
-   CONNECTION STATUS BAR
+   ACTIVE DOMAIN BAR (LIGHT SURFACE UNDER HEADER)
    ===================================================== */
-.connection-bar {
+.active-domain-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 18px;
+  justify-content: space-between;
+  padding: 8px 18px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+.active-domain-bar__info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.active-domain-bar__label {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.active-domain-bar__name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--brand-primary);
+  line-height: 1.2;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
 }
 
 .status-dot {
@@ -230,13 +261,13 @@ body {
 }
 
 /* =====================================================
-   CARDS & SURFACES
+   CARDS & SURFACES (CRISP WHITE ON LIGHT CANVAS)
    ===================================================== */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: 13px 15px;
   box-shadow: var(--shadow-card);
 }
 
@@ -244,7 +275,34 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 7px;
+  margin-bottom: 9px;
+}
+
+.card__title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card__pill {
+  background: var(--brand-light);
+  border: 1px solid var(--brand-border);
+  color: var(--brand-primary);
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+}
+
+.card__title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
 }
 
 .card__label {
@@ -322,13 +380,12 @@ body {
   overflow-y: auto;
 }
 
-/* Quick Preset Chips */
+/* Quick Preset Chips (Matching Screenshot Compare Competitors) */
 .preset-group {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  margin-top: 7px;
-  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .preset-label {
@@ -339,30 +396,30 @@ body {
 
 .preset-chips {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .preset-chip {
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xs);
-  padding: 2px 8px;
+  background: var(--brand-light);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--brand-primary);
   cursor: pointer;
   font-family: var(--font-system);
   transition: all var(--transition-speed) ease;
 }
 
 .preset-chip:hover {
-  background: var(--brand-light);
-  border-color: var(--brand-border);
-  color: var(--brand-primary);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--text-inverse);
 }
 
-/* Search Direction Radio Group */
+/* Search Direction Fieldset */
 .mode-fieldset {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -396,7 +453,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 13px;
+  padding: 10px 14px;
   cursor: pointer;
   transition: border-color var(--transition-speed) ease;
 }
@@ -408,22 +465,18 @@ body {
 .toggle-card__info {
   display: flex;
   flex-direction: column;
-}
-
-.toggle-card__title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-primary);
+  gap: 2px;
 }
 
 .toggle-card__desc {
   font-size: 10.5px;
   color: var(--text-muted);
+  margin-top: 2px;
 }
 
 /* Helper Box */
 .helper-box {
-  background: var(--bg-subtle);
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 9px 12px;
@@ -490,7 +543,7 @@ body {
 
 /* Secondary Button */
 .btn--secondary {
-  background: var(--bg-subtle);
+  background: var(--bg-card);
   color: var(--text-secondary);
   border: 1px solid var(--border-strong);
   padding: 7px 12px;
@@ -688,7 +741,7 @@ body {
   transition: width var(--transition-speed) ease;
 }
 
-/* Metrics Grid (3 columns) */
+/* Metrics Grid (Matching Nested Light Boxes from Screenshot 1) */
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -696,9 +749,9 @@ body {
 }
 
 .metric-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   text-align: center;
   box-shadow: var(--shadow-sm);
@@ -706,7 +759,7 @@ body {
 
 .metric-card__title {
   display: block;
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -716,7 +769,7 @@ body {
 
 .metric-card__val {
   display: block;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -725,12 +778,7 @@ body {
 
 /* Letter Card */
 .letter-card {
-  padding: 9px 12px;
-}
-
-.letter-card__label {
-  display: block;
-  margin-bottom: 6px;
+  padding: 10px 14px;
 }
 
 .letter-grid {
@@ -752,7 +800,7 @@ body {
 }
 
 .letter--pending {
-  background: var(--bg-subtle);
+  background: var(--bg-canvas);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
 }
@@ -770,11 +818,11 @@ body {
 
 /* Feed Card */
 .feed-card {
-  padding: 10px 12px;
+  padding: 10px 14px;
 }
 
 .feed-list {
-  background: var(--bg-subtle);
+  background: var(--bg-canvas);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   max-height: 135px;
@@ -906,7 +954,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 18px;
+  padding: 6px 18px;
   background: var(--bg-canvas);
   border-bottom: 1px solid var(--border-subtle);
   font-size: 11px;
@@ -928,7 +976,7 @@ body {
   font-weight: 500;
 }
 
-/* Interactive Table */
+/* Interactive Table (Pure White surface with crisp light borders) */
 .table-wrap {
   flex: 1;
   overflow-y: auto;
@@ -1051,9 +1099,10 @@ body {
 }
 
 .history-header__title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 800;
   color: var(--text-primary);
+  margin: 0;
 }
 
 .history-list {
@@ -1192,74 +1241,4 @@ body {
 .toast--visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
-}
-
-/* =====================================================
-   NATIVE DARK MODE VARIANT
-   ===================================================== */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-canvas:            #0B0F19;
-    --bg-card:              #111827;
-    --bg-subtle:            #1E293B;
-    --bg-hover:             #1E293B;
-
-    --border-subtle:        #1F2937;
-    --border-strong:        #374151;
-
-    --text-primary:         #F8FAFC;
-    --text-secondary:       #CBD5E1;
-    --text-muted:           #94A3B8;
-
-    --brand-light:          rgba(64, 50, 201, 0.22);
-    --brand-border:         #4F46E5;
-    --accent-dr-bg:         rgba(64, 50, 201, 0.22);
-    --accent-dr-border:     #4F46E5;
-
-    --success-bg:           rgba(6, 78, 59, 0.4);
-    --success-border:       #065F46;
-    --success-text:         #34D399;
-
-    --notice-bg:            rgba(120, 53, 15, 0.35);
-    --notice-border:        #92400E;
-    --notice-text:          #FBBF24;
-
-    --danger-bg:            rgba(127, 29, 29, 0.35);
-    --danger-border:        #991B1B;
-    --danger-text:          #F87171;
-
-    --shadow-card:          0 2px 8px rgba(0, 0, 0, 0.35);
-  }
-
-  .connection-bar,
-  .scan-header,
-  .results-header,
-  .toolbar,
-  .actions-bar,
-  .history-header,
-  .table-wrap {
-    background: var(--bg-card);
-  }
-
-  .form-input,
-  .form-textarea,
-  .form-select {
-    background: var(--bg-card);
-    color: var(--text-primary);
-  }
-
-  .data-table th,
-  .select-bar {
-    background: var(--bg-canvas);
-  }
-
-  .data-table tbody tr:hover {
-    background: rgba(64, 50, 201, 0.18);
-  }
-
-  .seg-tab--active {
-    background: var(--bg-subtle);
-    border-color: #4F46E5;
-    color: #818CF8;
-  }
 }
