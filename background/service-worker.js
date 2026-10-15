@@ -18,19 +18,27 @@ let activeAbortController = null;
 async function findOrCreateEtsyTab(useIncognito = false) {
   try {
     const tabs = await chrome.tabs.query({ url: ['https://*.etsy.com/*', 'https://etsy.com/*'] });
-    if (tabs && tabs.length > 0) {
-      if (useIncognito) {
-        const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
-        if (incognitoTab) return incognitoTab;
-      } else {
-        const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
-        if (regularTab) return regularTab;
-      }
-      const active = tabs.find(t => t.active);
-      return active || tabs[0];
-    }
 
     if (useIncognito) {
+      const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
+      if (incognitoTab) {
+        try {
+          await chrome.tabs.update(incognitoTab.id, { active: true });
+          if (incognitoTab.windowId) {
+            await chrome.windows.update(incognitoTab.windowId, { focused: true });
+          }
+          // Ensure content script is active in this tab
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: incognitoTab.id },
+              files: ['content/etsy-scanner.js'],
+            });
+          } catch {}
+        } catch {}
+        return incognitoTab;
+      }
+
+      // No Incognito Etsy tab open: Open a fresh Incognito Etsy window!
       let isAllowed = false;
       try {
         isAllowed = await chrome.extension.isAllowedIncognitoAccess();
@@ -44,12 +52,30 @@ async function findOrCreateEtsyTab(useIncognito = false) {
           incognito: true,
           focused: true,
         });
-        if (win.tabs && win.tabs.length > 0) {
-          // Wait briefly for Etsy page to load in the new window
-          await new Promise(r => setTimeout(r, 2200));
-          return win.tabs[0];
+        const targetTab = win.tabs?.[0];
+        if (targetTab) {
+          // Wait for Etsy page to load in the new incognito window
+          await new Promise(r => setTimeout(r, 2600));
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: targetTab.id },
+              files: ['content/etsy-scanner.js'],
+            });
+          } catch {}
+          return targetTab;
         }
+      } else {
+        broadcast({
+          type: 'INCOGNITO_PERMISSION_REQUIRED',
+          message: 'Please enable "Allow in Incognito" for E Keyword Spy in chrome://extensions to use Incognito mode.',
+        });
       }
+    } else {
+      const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
+      if (regularTab) return regularTab;
+      const active = tabs.find(t => t.active);
+      if (active) return active;
+      if (tabs.length > 0) return tabs[0];
     }
   } catch (err) {
     console.warn('E Keyword Spy: findOrCreateEtsyTab warning', err);
@@ -80,7 +106,20 @@ function broadcast(message) {
   }
 }
 
-async function handleStartScan({ keywords, keyword, mode = 'both', testMode = false, deepExpansion = true, branchLimit = 3, useIncognito = true }) {
+async function handleStartScan({
+  keywords,
+  keyword,
+  mode = 'both',
+  testMode = false,
+  deepExpansion = true,
+  branchLimit = 3,
+  useIncognito = true,
+  isRound2 = false,
+  round2Expansion = false,
+  round2Limit = 5,
+  initialResults = [],
+  rootSeed = '',
+}) {
   if (activeAbortController) {
     activeAbortController.abort();
     activeAbortController = null;
@@ -91,6 +130,8 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
 
   const settings = await getSettings();
   const effectiveTestMode = testMode || settings.testMode;
+  const effectiveRound2Expansion = round2Expansion !== undefined ? round2Expansion : (settings.round2Expansion !== false);
+  const effectiveRound2Limit = round2Limit || settings.round2Limit || 5;
   const etsyTab = await findOrCreateEtsyTab(useIncognito && !effectiveTestMode);
 
   const seedList = parseSeedKeywords(keywords || keyword);
@@ -99,7 +140,7 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
     return;
   }
 
-  const scanId = `scan_${Date.now()}`;
+  const scanId = isRound2 ? `scan_r2_${Date.now()}` : `scan_${Date.now()}`;
   const branchMultiplier = deepExpansion ? (branchLimit === 'all' ? 4 : (Number(branchLimit) + 1)) : 1;
   const totalQueries = seedList.length * (mode === 'both' ? 52 : 26) * branchMultiplier;
 
@@ -116,12 +157,17 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
     mode,
     deepExpansion,
     branchLimit,
+    isRound2,
+    round2Expansion: effectiveRound2Expansion,
+    round2Limit: effectiveRound2Limit,
+    rootSeed: rootSeed || seedList[0],
+    currentRound: isRound2 ? 2 : 1,
     status: 'running',
     currentStep: 0,
     totalSteps: totalQueries,
     currentLetter: deepExpansion ? 'AUTO' : 'A',
     currentType: mode === 'prefix' ? 'prefix' : 'suffix',
-    results: [],
+    results: Array.isArray(initialResults) ? [...initialResults] : [],
     startTime: Date.now(),
   };
 
@@ -137,6 +183,11 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
       testMode: effectiveTestMode,
       deepExpansion,
       branchLimit,
+      isRound2,
+      round2Expansion: effectiveRound2Expansion,
+      round2Limit: effectiveRound2Limit,
+      initialResults: scanState.results,
+      rootSeed: scanState.rootSeed,
       etsyTabId: etsyTab?.id || null,
       signal,
       onProgress: async (progress) => {
@@ -152,6 +203,8 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
         scanState.currentLetter = progress.letter;
         scanState.currentType = progress.type;
         scanState.statusMessage = progress.statusMessage || '';
+        scanState.currentRound = progress.currentRound || progress.round || (isRound2 ? 2 : 1);
+
         if (progress.newResults && progress.newResults.length > 0) {
           scanState.results.push(...progress.newResults);
         }
@@ -177,6 +230,8 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
             letter: progress.letter,
             type: progress.type,
             query: progress.query,
+            round: progress.round || scanState.currentRound,
+            currentRound: scanState.currentRound,
             newResults: progress.newResults,
             totalFound: scanState.results.length,
           },

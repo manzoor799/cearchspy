@@ -26,7 +26,7 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 // Application State
 let currentResults = [];
-let currentFilter = 'all'; // 'all' | 'autocomplete' | 'suffix' | 'prefix'
+let currentFilter = 'all'; // 'all' | 'round1' | 'round2' | 'autocomplete' | 'suffix' | 'prefix'
 let currentSeedFilter = 'all'; // 'all' | specific seed keyword
 let currentSearch = '';
 let currentSeed = '';
@@ -34,6 +34,7 @@ let currentSeedList = [];
 let selectedIndices = new Set();
 let activeScanData = null;
 let selectedBranchLimit = '3';
+let selectedRound2Limit = '5';
 
 // Views
 const views = {
@@ -52,12 +53,18 @@ const elements = {
   btnHistory: document.getElementById('btn-history'),
 
   // View 1: Setup & Configuration
+  incognitoWarningBanner: document.getElementById('incognito-warning-banner'),
+  btnOpenExtSettings: document.getElementById('btn-open-ext-settings'),
   seedKeyword: document.getElementById('seed-keyword'),
   seedBadge: document.getElementById('seed-badge'),
   cardDeepExpansion: document.getElementById('card-deep-expansion'),
   deepExpansionToggle: document.getElementById('deep-expansion-toggle'),
   deepOptionsContainer: document.getElementById('deep-options-container'),
   branchDepthGroup: document.getElementById('branch-depth-group'),
+  cardRound2Expansion: document.getElementById('card-round2-expansion'),
+  round2ExpansionToggle: document.getElementById('round2-expansion-toggle'),
+  round2OptionsContainer: document.getElementById('round2-options-container'),
+  round2DepthGroup: document.getElementById('round2-depth-group'),
   inputError: document.getElementById('input-error'),
   incognitoCard: document.getElementById('incognito-card'),
   incognitoModeToggle: document.getElementById('incognito-mode-toggle'),
@@ -65,7 +72,9 @@ const elements = {
   btnStart: document.getElementById('btn-start'),
 
   // View 2: Live Scanning
+  scanHeader: document.querySelector('.scan-header'),
   scanKeywordLabel: document.getElementById('scan-keyword-label'),
+  scanRoundBadge: document.getElementById('scan-round-badge'),
   scanModeLabel: document.getElementById('scan-mode-label'),
   btnCancel: document.getElementById('btn-cancel'),
   progressCounter: document.getElementById('progress-counter'),
@@ -83,17 +92,21 @@ const elements = {
 
   // View 3: Results & Data Table
   resultsKeywordLabel: document.getElementById('results-keyword-label'),
+  resultsRoundBadge: document.getElementById('results-round-badge'),
   resultsMeta: document.getElementById('results-meta'),
   btnResultsNew: document.getElementById('btn-results-new'),
   searchResults: document.getElementById('search-results'),
   filterSeed: document.getElementById('filter-seed'),
   tabAll: document.getElementById('tab-all'),
+  tabRound1: document.getElementById('tab-round1'),
+  tabRound2: document.getElementById('tab-round2'),
   tabAutocomplete: document.getElementById('tab-autocomplete'),
   tabSuffix: document.getElementById('tab-suffix'),
   tabPrefix: document.getElementById('tab-prefix'),
   selectAll: document.getElementById('select-all'),
   selectedCount: document.getElementById('selected-count'),
   resultsBody: document.getElementById('results-body'),
+  btnDeepExpand: document.getElementById('btn-deep-expand'),
   btnCsv: document.getElementById('btn-csv'),
   btnCopyTags: document.getElementById('btn-copy-tags'),
   btnCopy: document.getElementById('btn-copy'),
@@ -168,10 +181,19 @@ async function loadSavedSettings() {
   if (elements.deepExpansionToggle) {
     elements.deepExpansionToggle.checked = (settings.deepExpansion !== false);
   }
+  if (elements.round2ExpansionToggle) {
+    elements.round2ExpansionToggle.checked = (settings.round2Expansion !== false);
+  }
   if (settings.branchLimit && elements.branchDepthGroup) {
     selectedBranchLimit = String(settings.branchLimit);
     elements.branchDepthGroup.querySelectorAll('.radio-pill').forEach(btn => {
       btn.classList.toggle('radio-pill--active', btn.dataset.depth === selectedBranchLimit);
+    });
+  }
+  if (settings.round2Limit && elements.round2DepthGroup) {
+    selectedRound2Limit = String(settings.round2Limit);
+    elements.round2DepthGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.classList.toggle('radio-pill--active', btn.dataset.depth === selectedRound2Limit);
     });
   }
 }
@@ -180,6 +202,16 @@ async function checkEtsyConnection() {
   if (!elements.statusDot || !elements.statusText) return;
   try {
     const response = await chrome.runtime.sendMessage({ type: 'CHECK_ETSY_CONNECTION' });
+
+    // Manage Incognito Warning Banner visibility
+    if (elements.incognitoWarningBanner) {
+      if (elements.incognitoModeToggle?.checked && response && !response.isIncognitoAllowed) {
+        elements.incognitoWarningBanner.style.display = 'flex';
+      } else {
+        elements.incognitoWarningBanner.style.display = 'none';
+      }
+    }
+
     if (response?.connected) {
       elements.statusDot.className = 'status-dot status-dot--connected';
       if (response.isIncognito) {
@@ -240,6 +272,12 @@ function setupScanningView(scan) {
   const totalBranches = scan.totalBranches || totalSeeds;
   const branchIndex = scan.branchIndex || seedIndex;
 
+  const roundNum = scan.currentRound || scan.round || (scan.isRound2 ? 2 : 1);
+  if (elements.scanRoundBadge) {
+    elements.scanRoundBadge.textContent = roundNum === 2 ? 'R2: LONG-TAIL' : 'R1';
+    elements.scanRoundBadge.className = roundNum === 2 ? 'badge badge--brand' : 'badge badge--neutral';
+  }
+
   if (elements.scanKeywordLabel) {
     if (scan.currentLetter === 'AUTO' || scan.statusMessage) {
       elements.scanKeywordLabel.textContent = scan.statusMessage || `Auto-Suggest Harvest: "${scan.currentSeed || scan.keyword}"`;
@@ -284,6 +322,8 @@ function setupScanningView(scan) {
     rootSeed: scan.rootSeed || scan.currentSeed,
     letter: scan.currentLetter || 'A',
     type: scan.currentType || 'suffix',
+    round: roundNum,
+    currentRound: roundNum,
     statusMessage: scan.statusMessage,
     newResults: [],
     totalFound: scan.results?.length || 0,
@@ -335,6 +375,12 @@ function updateScanningProgress(progress) {
   }
   if (elements.progressFill) {
     elements.progressFill.style.width = `${percent}%`;
+  }
+
+  const roundNum = progress.currentRound || progress.round || 1;
+  if (elements.scanRoundBadge) {
+    elements.scanRoundBadge.textContent = roundNum === 2 ? 'R2: LONG-TAIL' : 'R1';
+    elements.scanRoundBadge.className = roundNum === 2 ? 'badge badge--brand' : 'badge badge--neutral';
   }
 
   const activeSeed = progress.branchName || progress.currentSeed || '';
@@ -448,6 +494,17 @@ function displayResults(scan) {
     }
   }
 
+  const hasR2 = currentResults.some(r => r.round === 2);
+  const r2Count = currentResults.filter(r => r.round === 2).length;
+  if (elements.resultsRoundBadge) {
+    if (hasR2) {
+      elements.resultsRoundBadge.style.display = 'inline-flex';
+      elements.resultsRoundBadge.textContent = `R1 + R2 (${r2Count} Long-Tail)`;
+    } else {
+      elements.resultsRoundBadge.style.display = 'none';
+    }
+  }
+
   if (elements.resultsMeta) {
     const dateStr = scan.endTime ? new Date(scan.endTime).toLocaleDateString() : 'Today';
     elements.resultsMeta.textContent = `${currentResults.length} keywords found · ${dateStr}`;
@@ -489,11 +546,15 @@ function updateFilterTabs() {
     ? currentResults
     : currentResults.filter(r => (r.seedKeyword || currentSeed) === currentSeedFilter);
 
+  const r1Count = filteredBySeed.filter(r => (r.round || 1) === 1).length;
+  const r2Count = filteredBySeed.filter(r => r.round === 2).length;
   const autocompleteCount = filteredBySeed.filter(r => r.type === 'autocomplete').length;
   const suffixCount = filteredBySeed.filter(r => r.type === 'suffix').length;
   const prefixCount = filteredBySeed.filter(r => r.type === 'prefix').length;
 
   if (elements.tabAll) elements.tabAll.textContent = `All (${filteredBySeed.length})`;
+  if (elements.tabRound1) elements.tabRound1.textContent = `Round 1 (${r1Count})`;
+  if (elements.tabRound2) elements.tabRound2.textContent = `Long-Tail R2 (${r2Count})`;
   if (elements.tabAutocomplete) elements.tabAutocomplete.textContent = `Auto-Suggest (${autocompleteCount})`;
   if (elements.tabSuffix) elements.tabSuffix.textContent = `After (${suffixCount})`;
   if (elements.tabPrefix) elements.tabPrefix.textContent = `Before (${prefixCount})`;
@@ -509,7 +570,11 @@ function getFilteredResults() {
       const seed = item.seedKeyword || currentSeed;
       if (seed !== currentSeedFilter) return false;
     }
-    if (currentFilter !== 'all' && item.type !== currentFilter) {
+    if (currentFilter === 'round1') {
+      if ((item.round || 1) !== 1) return false;
+    } else if (currentFilter === 'round2') {
+      if (item.round !== 2) return false;
+    } else if (currentFilter !== 'all' && item.type !== currentFilter) {
       return false;
     }
     if (currentSearch.trim()) {
@@ -531,7 +596,7 @@ function renderResultsTable() {
   if (filtered.length === 0) {
     elements.resultsBody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--text-muted);font-size:12px;">
+        <td colspan="7" style="text-align:center;padding:28px 16px;color:var(--text-muted);font-size:12px;">
           No matching keywords found.
         </td>
       </tr>
@@ -559,6 +624,12 @@ function renderResultsTable() {
       tagTitle = `${len} characters (Near Etsy 20-character tag limit)`;
     }
 
+    const roundNum = item.round || 1;
+    const words = item.wordCount || (item.keyword ? item.keyword.trim().split(/\s+/).filter(Boolean).length : 0);
+    const roundBadgeClass = roundNum === 2 ? 'round-badge round-badge--r2' : 'round-badge round-badge--r1';
+    const roundBadgeText = roundNum === 2 ? `R2 · ${words}w` : 'R1';
+    const roundTitle = roundNum === 2 ? `Round 2 Long-Tail (${words} words)` : 'Round 1 Discovery';
+
     const isAuto = item.type === 'autocomplete';
     const seedLabel = isAuto ? 'Auto-Suggest' : (item.seedKeyword || currentSeed);
     const seedChipClass = isAuto ? 'seed-chip seed-chip--auto' : 'seed-chip';
@@ -571,6 +642,9 @@ function renderResultsTable() {
       </td>
       <td class="col-num">${index + 1}</td>
       <td class="col-keyword">${escapeHTML(item.keyword)}</td>
+      <td class="col-round">
+        <span class="${roundBadgeClass}" title="${roundTitle}">${roundBadgeText}</span>
+      </td>
       <td class="col-tag">
         <span class="tag-badge ${tagBadgeClass}" title="${tagTitle}">${len}c</span>
       </td>
@@ -696,6 +770,13 @@ function bindEvents() {
     });
   });
 
+  // Incognito Extension Settings Button
+  if (elements.btnOpenExtSettings) {
+    elements.btnOpenExtSettings.addEventListener('click', () => {
+      chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+    });
+  }
+
   // Deep Auto-Suggest Expansion Toggle & Branch Depth Pills
   if (elements.deepExpansionToggle) {
     elements.deepExpansionToggle.addEventListener('change', (e) => {
@@ -717,9 +798,38 @@ function bindEvents() {
     });
   }
 
+  // Round 2 Long-Tail Crawler Toggle & Depth Pills
+  if (elements.round2ExpansionToggle) {
+    elements.round2ExpansionToggle.addEventListener('change', async (e) => {
+      if (elements.round2OptionsContainer) {
+        elements.round2OptionsContainer.style.opacity = e.target.checked ? '1' : '0.4';
+        elements.round2OptionsContainer.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+      }
+      await saveSettings({ round2Expansion: e.target.checked });
+      showToast(e.target.checked ? 'Round 2 Long-Tail Crawler enabled' : 'Round 2 Crawler disabled');
+    });
+  }
+
+  if (elements.round2DepthGroup) {
+    elements.round2DepthGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        elements.round2DepthGroup.querySelectorAll('.radio-pill').forEach(b => b.classList.remove('radio-pill--active'));
+        btn.classList.add('radio-pill--active');
+        selectedRound2Limit = btn.dataset.depth;
+        await saveSettings({ round2Limit: selectedRound2Limit });
+        showToast(`Round 2 limit: ${btn.textContent.trim()}`);
+      });
+    });
+  }
+
   // Start Scan CTA
   if (elements.btnStart) {
     elements.btnStart.addEventListener('click', handleStartScanClick);
+  }
+
+  // Deep Expand (R2) Button
+  if (elements.btnDeepExpand) {
+    elements.btnDeepExpand.addEventListener('click', handleDeepExpandClick);
   }
 
   // Cancel Scan CTA
@@ -955,15 +1065,83 @@ async function handleStartScanClick() {
   const testMode = elements.testModeToggle?.checked || false;
   const deepExpansion = elements.deepExpansionToggle ? elements.deepExpansionToggle.checked : true;
   const branchLimit = selectedBranchLimit;
+  const round2Expansion = elements.round2ExpansionToggle ? elements.round2ExpansionToggle.checked : true;
+  const round2Limit = selectedRound2Limit;
   const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : true;
 
   try {
     await chrome.runtime.sendMessage({
       type: 'START_SCAN',
-      payload: { keywords: seedList, mode, testMode, deepExpansion, branchLimit, useIncognito },
+      payload: {
+        keywords: seedList,
+        mode,
+        testMode,
+        deepExpansion,
+        branchLimit,
+        round2Expansion,
+        round2Limit,
+        useIncognito,
+      },
     });
   } catch (err) {
     showToast(`Failed to start scan: ${err.message}`);
+  }
+}
+
+async function handleDeepExpandClick() {
+  if (!currentResults || currentResults.length === 0) {
+    showToast('No keywords available to expand');
+    return;
+  }
+
+  // Check if user has selected specific items in table
+  const selectedItems = currentResults.filter((_, i) => selectedIndices.has(i));
+  const pool = (selectedItems.length > 0 && selectedItems.length < currentResults.length)
+    ? selectedItems
+    : currentResults;
+
+  // Extract multi-word candidate keywords (2-3 words e.g. "planner accessories", "planner adhd")
+  const candidateList = [];
+  const seen = new Set();
+  for (const item of pool) {
+    const kw = item.keyword.trim();
+    const kwLower = kw.toLowerCase();
+    const words = kw.split(/\s+/).filter(Boolean);
+    // Take phrases with at least 2 words
+    if (words.length >= 2 && !seen.has(kwLower)) {
+      seen.add(kwLower);
+      candidateList.push(kw);
+    }
+  }
+
+  const effectiveCandidates = candidateList.length > 0
+    ? candidateList.slice(0, 10)
+    : pool.slice(0, 10).map(i => i.keyword);
+
+  const mode = document.querySelector('input[name="scan-mode"]:checked')?.value || 'both';
+  const testMode = elements.testModeToggle?.checked || false;
+  const useIncognito = elements.incognitoModeToggle ? elements.incognitoModeToggle.checked : true;
+
+  showToast(`Starting Round 2 long-tail expansion on ${effectiveCandidates.length} keywords...`);
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'START_SCAN',
+      payload: {
+        keywords: effectiveCandidates,
+        mode,
+        testMode,
+        deepExpansion: false,
+        branchLimit: 1,
+        isRound2: true,
+        round2Expansion: false,
+        initialResults: currentResults, // KEEP all Round 1 results!
+        rootSeed: currentSeed,
+        useIncognito,
+      },
+    });
+  } catch (err) {
+    showToast(`Failed to start Round 2: ${err.message}`);
   }
 }
 

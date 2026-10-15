@@ -613,6 +613,57 @@ body {
   color: var(--text-inverse);
 }
 
+/* Deep Expand (R2) Button */
+.btn--deep-expand {
+  background: var(--brand-primary);
+  color: var(--text-inverse);
+  border: 1px solid var(--brand-primary);
+  padding: 7px 11px;
+  font-size: 11.5px;
+  box-shadow: 0 1px 2px rgba(64, 50, 201, 0.16);
+}
+
+.btn--deep-expand:hover {
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-hover);
+}
+
+/* Warning button for Incognito Banner */
+.btn--warning {
+  background: #D97706;
+  color: #FFFFFF;
+  border: 1px solid #B45309;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.btn--warning:hover {
+  background: #B45309;
+}
+
+/* Incognito Permission Alert Banner */
+.incognito-warning-banner {
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.incognito-warning-text {
+  font-size: 11px;
+  color: #92400E;
+  line-height: 1.35;
+}
+
+.incognito-warning-text strong {
+  font-weight: 700;
+}
+
 /* Secondary Button */
 .btn--secondary {
   background: var(--bg-card);
@@ -1114,6 +1165,36 @@ body {
 .col-keyword {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.col-round {
+  width: 64px;
+  text-align: center;
+}
+
+.round-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  border-radius: var(--radius-xs);
+  line-height: 13px;
+  white-space: nowrap;
+}
+
+.round-badge--r1 {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.round-badge--r2 {
+  background: var(--brand-light);
+  border: 1px solid var(--brand-border);
+  color: var(--brand-primary);
+  font-weight: 800;
 }
 
 .col-tag {

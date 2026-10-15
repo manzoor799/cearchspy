@@ -44,6 +44,14 @@
          VIEW 1: SETUP & SCAN CONFIGURATION
          ===================================================== -->
     <section class="view view--active" id="view-input">
+      <!-- Incognito Permission Alert Banner (Shown if not allowed in Chrome) -->
+      <div class="incognito-warning-banner" id="incognito-warning-banner" style="display:none;">
+        <div class="incognito-warning-text">
+          <strong>Incognito Access Needed:</strong> Chrome requires you to toggle "Allow in Incognito" in extension details to open clean buyer tabs.
+        </div>
+        <button type="button" class="btn btn--sm btn--warning" id="btn-open-ext-settings">Open Settings</button>
+      </div>
+
       <!-- Seed Keywords Card -->
       <div class="card">
         <div class="card__header">
@@ -76,7 +84,7 @@
         <p class="form-error" id="input-error"></p>
       </div>
 
-      <!-- Deep Auto-Suggest Tree Expansion Card -->
+      <!-- Deep Auto-Suggest Tree Expansion Card (Round 1) -->
       <div class="card" id="card-deep-expansion">
         <div class="card__header">
           <div class="card__title-group">
@@ -95,6 +103,31 @@
             <div class="radio-pill-group" id="branch-depth-group">
               <button type="button" class="radio-pill radio-pill--active" data-depth="3">Top 3</button>
               <button type="button" class="radio-pill" data-depth="5">Top 5</button>
+              <button type="button" class="radio-pill" data-depth="all">All</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round 2 Long-Tail Crawler Card -->
+      <div class="card" id="card-round2-expansion">
+        <div class="card__header">
+          <div class="card__title-group">
+            <span class="card__pill">LONG-TAIL ENGINE</span>
+            <span class="card__title">Round 2 Long-Tail Crawler</span>
+          </div>
+          <input type="checkbox" id="round2-expansion-toggle" class="form-checkbox" checked title="Automatically crawl 4-word & 5-word long-tail keywords">
+        </div>
+        <p class="deep-card-desc">
+          Takes discovered keywords and crawls 4-word and 5-word long-tail keywords (e.g. <em>planner accessories a</em>, <em>planner accessories b</em>) to expand reach.
+        </p>
+
+        <div class="deep-option-box" id="round2-options-container">
+          <div class="deep-toggle-row">
+            <span class="deep-toggle-label">Expand Limit:</span>
+            <div class="radio-pill-group" id="round2-depth-group">
+              <button type="button" class="radio-pill radio-pill--active" data-depth="5">Top 5</button>
+              <button type="button" class="radio-pill" data-depth="10">Top 10</button>
               <button type="button" class="radio-pill" data-depth="all">All</button>
             </div>
           </div>
@@ -176,7 +209,10 @@
       <!-- Scan Header -->
       <div class="scan-header">
         <div>
-          <h2 class="scan-header__title" id="scan-keyword-label">Scanning: "resume template"</h2>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <h2 class="scan-header__title" id="scan-keyword-label">Scanning: "resume template"</h2>
+            <span class="badge badge--brand" id="scan-round-badge">R1</span>
+          </div>
           <span class="scan-header__meta" id="scan-mode-label">Seed 1 of 1 · Both directions</span>
         </div>
         <button class="btn btn--danger btn--sm" id="btn-cancel">
@@ -254,7 +290,10 @@
       <!-- Summary Header -->
       <div class="results-header">
         <div>
-          <h2 class="results-header__title" id="results-keyword-label">"resume template"</h2>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <h2 class="results-header__title" id="results-keyword-label">"resume template"</h2>
+            <span class="badge badge--brand" id="results-round-badge" style="display:none;">R1 + R2</span>
+          </div>
           <span class="results-header__meta" id="results-meta">0 keywords found</span>
         </div>
         <button class="btn btn--secondary btn--sm" id="btn-results-new">
@@ -281,9 +320,11 @@
           </select>
         </div>
 
-        <!-- Segmented Direction Tabs -->
+        <!-- Segmented Direction & Round Tabs -->
         <div class="segmented-tabs" id="tab-bar">
           <button class="seg-tab seg-tab--active" data-filter="all" id="tab-all">All (0)</button>
+          <button class="seg-tab" data-filter="round1" id="tab-round1">Round 1 (0)</button>
+          <button class="seg-tab" data-filter="round2" id="tab-round2">Long-Tail R2 (0)</button>
           <button class="seg-tab" data-filter="autocomplete" id="tab-autocomplete">Auto-Suggest (0)</button>
           <button class="seg-tab" data-filter="suffix" id="tab-suffix">After (0)</button>
           <button class="seg-tab" data-filter="prefix" id="tab-prefix">Before (0)</button>
@@ -307,6 +348,7 @@
               <th class="col-check"></th>
               <th class="col-num">#</th>
               <th class="col-keyword">KEYWORD</th>
+              <th class="col-round" title="Discovery Round &amp; Word Count">ROUND</th>
               <th class="col-tag" title="Etsy listing tags must be ≤ 20 characters">TAG (≤20)</th>
               <th class="col-seed">SEED</th>
               <th class="col-link" title="Open search on Etsy"></th>
@@ -318,13 +360,19 @@
 
       <!-- Sticky Action Toolbar -->
       <div class="actions-bar">
+        <button class="btn btn--deep-expand" id="btn-deep-expand" title="Expand selected or top Round 1 keywords into 4-word &amp; 5-word long-tail keywords using A–Z alphabet soup">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span>Deep Expand (R2)</span>
+        </button>
         <button class="btn btn--primary btn--grow" id="btn-csv" title="Download CSV for Excel / Sheets">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          <span>Download CSV</span>
+          <span>CSV</span>
         </button>
         <button class="btn btn--feature" id="btn-copy-tags" title="Extract 13 tags within Etsy's 20-character limit">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -338,7 +386,7 @@
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          <span>Copy All</span>
+          <span>Copy</span>
         </button>
       </div>
     </section>
