@@ -48,8 +48,8 @@
     }
 
     input.style.border = '1px solid #4032C9';
-    input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.18)';
-    input.style.transition = 'all 0.16s ease';
+    input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.16)';
+    input.style.transition = 'all 0.18s ease';
 
     // Set text value
     input.value = query;
@@ -110,7 +110,7 @@
         alignItems: 'center',
         gap: '8px',
         pointerEvents: 'none',
-        transition: 'all 0.16s ease',
+        transition: 'all 0.18s ease',
         border: '1px solid #CBD5E1',
       });
       document.body.appendChild(activeIndicator);
