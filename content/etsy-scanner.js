@@ -200,20 +200,34 @@
         const query = message.query;
         const seedIndex = message.seedIndex || 1;
         const totalSeeds = message.totalSeeds || 1;
-        const seedText = totalSeeds > 1 ? ` (Seed ${seedIndex}/${totalSeeds})` : '';
+        const isRootProbe = Boolean(message.isRootProbe);
+        const branchIndex = message.branchIndex || seedIndex;
+        const totalBranches = message.totalBranches || totalSeeds;
 
         // 1. Physically type into Etsy's search bar with live movement
         typeIntoEtsySearchBar(query);
 
-        // 2. Update HUD overlay
-        showStatusIndicator(`E Keyword Spy: "${query}"${seedText}`);
+        // 2. Update HUD overlay based on scan phase
+        if (isRootProbe) {
+          showStatusIndicator(`Auto-Suggest Harvest: "${query}"`);
+          // Allow Etsy's live autocomplete dropdown to fully appear
+          await new Promise(r => setTimeout(r, message.pacingDelayMs || 1500));
+        } else {
+          const branchText = totalBranches > 1 ? ` (Branch ${branchIndex}/${totalBranches})` : '';
+          showStatusIndicator(`E Keyword Spy: "${query}"${branchText}`);
+          if (message.typingDelayMs) {
+            await new Promise(r => setTimeout(r, message.typingDelayMs));
+          }
+        }
 
         // 3. Extract real-time suggestions from Etsy same-origin API
         let suggestions = await fetchSameOriginSuggest(query);
 
         // 4. Also check live dropdown DOM to combine
-        if (!suggestions || suggestions.length === 0) {
-          suggestions = scrapeDropdownDOM();
+        const domSuggestions = scrapeDropdownDOM();
+        if (Array.isArray(domSuggestions) && domSuggestions.length > 0) {
+          const combined = [...(suggestions || []), ...domSuggestions];
+          suggestions = [...new Set(combined)];
         }
 
         sendResponse({ success: true, suggestions: suggestions || [] });

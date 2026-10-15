@@ -76,6 +76,31 @@
         <p class="form-error" id="input-error"></p>
       </div>
 
+      <!-- Deep Auto-Suggest Tree Expansion Card -->
+      <div class="card" id="card-deep-expansion">
+        <div class="card__header">
+          <div class="card__title-group">
+            <span class="card__pill">AUTO-SUGGEST TREE</span>
+            <span class="card__title">Deep Auto-Suggest Expansion</span>
+          </div>
+          <input type="checkbox" id="deep-expansion-toggle" class="form-checkbox" checked title="Enable recursive autocomplete branch discovery">
+        </div>
+        <p class="deep-card-desc">
+          Harvests buyer autocomplete suggestions for each seed (e.g. <em>resume template</em>, <em>resume template bundle</em>), then runs A–Z on each branch.
+        </p>
+
+        <div class="deep-option-box" id="deep-options-container">
+          <div class="deep-toggle-row">
+            <span class="deep-toggle-label">Branch Depth:</span>
+            <div class="radio-pill-group" id="branch-depth-group">
+              <button type="button" class="radio-pill radio-pill--active" data-depth="3">Top 3</button>
+              <button type="button" class="radio-pill" data-depth="5">Top 5</button>
+              <button type="button" class="radio-pill" data-depth="all">All</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Search Direction Card -->
       <fieldset class="card mode-fieldset">
         <div class="card__header">
@@ -247,6 +272,7 @@
         <!-- Segmented Direction Tabs -->
         <div class="segmented-tabs" id="tab-bar">
           <button class="seg-tab seg-tab--active" data-filter="all" id="tab-all">All (0)</button>
+          <button class="seg-tab" data-filter="autocomplete" id="tab-autocomplete">Auto-Suggest (0)</button>
           <button class="seg-tab" data-filter="suffix" id="tab-suffix">After (0)</button>
           <button class="seg-tab" data-filter="prefix" id="tab-prefix">Before (0)</button>
         </div>

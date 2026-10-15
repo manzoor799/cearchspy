@@ -419,6 +419,78 @@ body {
   color: var(--text-inverse);
 }
 
+/* Deep Auto-Suggest Tree Expansion Card */
+.deep-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.deep-card-desc em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+.deep-option-box {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all var(--transition-speed) ease;
+}
+
+.deep-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.deep-toggle-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.radio-pill-group {
+  display: flex;
+  gap: 5px;
+}
+
+.radio-pill {
+  font-family: var(--font-system);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-speed) ease;
+  line-height: 1.3;
+}
+
+.radio-pill:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.radio-pill--active {
+  background: var(--brand-primary);
+  color: var(--text-inverse);
+  border-color: var(--brand-primary);
+}
+
+.radio-pill--active:hover {
+  background: var(--brand-primary-hover);
+  color: var(--text-inverse);
+}
+
 /* Search Direction Fieldset */
 .mode-fieldset {
   border: 1px solid var(--border-strong);
@@ -672,6 +744,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.seed-chip--auto {
+  background: var(--brand-light);
+  border-color: var(--brand-border);
+  color: var(--brand-primary);
+  font-weight: 700;
 }
 
 /* =====================================================

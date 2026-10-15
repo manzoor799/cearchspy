@@ -26,13 +26,14 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 // Application State
 let currentResults = [];
-let currentFilter = 'all'; // 'all' | 'suffix' | 'prefix'
+let currentFilter = 'all'; // 'all' | 'autocomplete' | 'suffix' | 'prefix'
 let currentSeedFilter = 'all'; // 'all' | specific seed keyword
 let currentSearch = '';
 let currentSeed = '';
 let currentSeedList = [];
 let selectedIndices = new Set();
 let activeScanData = null;
+let selectedBranchLimit = '3';
 
 // Views
 const views = {
@@ -53,6 +54,10 @@ const elements = {
   // View 1: Setup & Configuration
   seedKeyword: document.getElementById('seed-keyword'),
   seedBadge: document.getElementById('seed-badge'),
+  cardDeepExpansion: document.getElementById('card-deep-expansion'),
+  deepExpansionToggle: document.getElementById('deep-expansion-toggle'),
+  deepOptionsContainer: document.getElementById('deep-options-container'),
+  branchDepthGroup: document.getElementById('branch-depth-group'),
   inputError: document.getElementById('input-error'),
   testModeToggle: document.getElementById('test-mode-toggle'),
   btnStart: document.getElementById('btn-start'),
@@ -81,6 +86,7 @@ const elements = {
   searchResults: document.getElementById('search-results'),
   filterSeed: document.getElementById('filter-seed'),
   tabAll: document.getElementById('tab-all'),
+  tabAutocomplete: document.getElementById('tab-autocomplete'),
   tabSuffix: document.getElementById('tab-suffix'),
   tabPrefix: document.getElementById('tab-prefix'),
   selectAll: document.getElementById('select-all'),
@@ -204,16 +210,26 @@ async function rehydrateState() {
 
 function setupScanningView(scan) {
   activeScanData = scan;
-  const currentSeed = scan.currentSeed || scan.keyword || '';
+  const currentSeed = scan.branchName || scan.currentSeed || scan.keyword || '';
   const seedIndex = scan.seedIndex || 1;
   const totalSeeds = scan.totalSeeds || 1;
+  const totalBranches = scan.totalBranches || totalSeeds;
+  const branchIndex = scan.branchIndex || seedIndex;
 
   if (elements.scanKeywordLabel) {
-    elements.scanKeywordLabel.textContent = `Scanning: "${currentSeed}"`;
+    if (scan.currentLetter === 'AUTO' || scan.statusMessage) {
+      elements.scanKeywordLabel.textContent = scan.statusMessage || `Auto-Suggest Harvest: "${scan.currentSeed || scan.keyword}"`;
+    } else {
+      elements.scanKeywordLabel.textContent = `Scanning: "${currentSeed}"`;
+    }
   }
   if (elements.scanModeLabel) {
-    const seedPrefixText = totalSeeds > 1 ? `Seed ${seedIndex} of ${totalSeeds} · ` : '';
-    elements.scanModeLabel.textContent = `${seedPrefixText}${scan.mode.toUpperCase()} mode`;
+    if (scan.currentLetter === 'AUTO') {
+      elements.scanModeLabel.textContent = 'Harvesting Etsy search bar autocomplete...';
+    } else {
+      const branchPrefixText = totalBranches > 1 ? `Branch ${branchIndex} of ${totalBranches} · ` : (totalSeeds > 1 ? `Seed ${seedIndex} of ${totalSeeds} · ` : '');
+      elements.scanModeLabel.textContent = `${branchPrefixText}${scan.mode.toUpperCase()} mode`;
+    }
   }
   if (elements.suffixLabel) elements.suffixLabel.textContent = currentSeed;
   if (elements.prefixLabel) elements.prefixLabel.textContent = currentSeed;
@@ -235,11 +251,16 @@ function setupScanningView(scan) {
   updateScanningProgress({
     overallStep: scan.currentStep || 0,
     totalOverallSteps: scan.totalSteps || 52,
-    currentSeed,
+    currentSeed: scan.currentSeed || currentSeed,
     seedIndex,
     totalSeeds,
+    branchName: scan.branchName || currentSeed,
+    branchIndex,
+    totalBranches,
+    rootSeed: scan.rootSeed || scan.currentSeed,
     letter: scan.currentLetter || 'A',
     type: scan.currentType || 'suffix',
+    statusMessage: scan.statusMessage,
     newResults: [],
     totalFound: scan.results?.length || 0,
   });
@@ -284,34 +305,49 @@ function updateScanningProgress(progress) {
     ? Math.min(100, Math.round((progress.overallStep / progress.totalOverallSteps) * 100))
     : 0;
 
+  const branchText = progress.totalBranches > 1 ? ` (Branch ${progress.branchIndex || 1}/${progress.totalBranches})` : '';
   if (elements.progressCounter) {
-    elements.progressCounter.textContent = `${progress.overallStep} / ${progress.totalOverallSteps} queries`;
+    elements.progressCounter.textContent = `${progress.overallStep} / ${progress.totalOverallSteps} queries${branchText}`;
   }
   if (elements.progressFill) {
     elements.progressFill.style.width = `${percent}%`;
   }
 
-  if (progress.currentSeed) {
+  const activeSeed = progress.branchName || progress.currentSeed || '';
+  if (activeSeed) {
     if (elements.scanKeywordLabel) {
-      elements.scanKeywordLabel.textContent = `Scanning: "${progress.currentSeed}"`;
+      if (progress.letter === 'AUTO' || progress.statusMessage) {
+        elements.scanKeywordLabel.textContent = progress.statusMessage || `Auto-Suggest Harvest: "${progress.currentSeed}"`;
+      } else {
+        elements.scanKeywordLabel.textContent = `Scanning: "${activeSeed}"`;
+      }
     }
-    if (elements.suffixLabel) elements.suffixLabel.textContent = progress.currentSeed;
-    if (elements.prefixLabel) elements.prefixLabel.textContent = progress.currentSeed;
+    if (elements.suffixLabel) elements.suffixLabel.textContent = activeSeed;
+    if (elements.prefixLabel) elements.prefixLabel.textContent = activeSeed;
   }
 
   if (elements.scanModeLabel) {
-    const seedPrefixText = progress.totalSeeds > 1
-      ? `Seed ${progress.seedIndex} of ${progress.totalSeeds} · `
-      : '';
-    elements.scanModeLabel.textContent = `${seedPrefixText}${progress.type.toUpperCase()} mode`;
+    if (progress.letter === 'AUTO') {
+      elements.scanModeLabel.textContent = 'Capturing Etsy search bar autocomplete...';
+    } else {
+      const branchPrefixText = progress.totalBranches > 1
+        ? `Branch ${progress.branchIndex} of ${progress.totalBranches} · `
+        : (progress.totalSeeds > 1 ? `Seed ${progress.seedIndex} of ${progress.totalSeeds} · ` : '');
+      const typeLabel = progress.type ? progress.type.toUpperCase() : 'SCAN';
+      elements.scanModeLabel.textContent = `${branchPrefixText}${typeLabel} mode`;
+    }
   }
 
   if (elements.statFound) {
     elements.statFound.textContent = String(progress.totalFound);
   }
   if (elements.statQuery) {
-    const dirLabel = progress.type === 'suffix' ? 'After' : 'Before';
-    elements.statQuery.textContent = `${progress.letter} (${dirLabel})`;
+    if (progress.letter === 'AUTO') {
+      elements.statQuery.textContent = 'AUTO';
+    } else {
+      const dirLabel = progress.type === 'suffix' ? 'After' : 'Before';
+      elements.statQuery.textContent = `${progress.letter} (${dirLabel})`;
+    }
   }
   if (elements.statEta) {
     const remaining = Math.max(0, progress.totalOverallSteps - progress.overallStep);
@@ -319,8 +355,10 @@ function updateScanningProgress(progress) {
     elements.statEta.textContent = estSeconds <= 1 ? '<1s' : `~${estSeconds}s`;
   }
 
-  updateLetterInGrid(elements.suffixGrid, progress.letter, progress.type === 'suffix');
-  updateLetterInGrid(elements.prefixGrid, progress.letter, progress.type === 'prefix');
+  if (progress.letter !== 'AUTO') {
+    updateLetterInGrid(elements.suffixGrid, progress.letter, progress.type === 'suffix');
+    updateLetterInGrid(elements.prefixGrid, progress.letter, progress.type === 'prefix');
+  }
 
   if (progress.newResults && progress.newResults.length > 0) {
     progress.newResults.forEach(r => appendLiveFeedItem(r));
@@ -427,10 +465,12 @@ function updateFilterTabs() {
     ? currentResults
     : currentResults.filter(r => (r.seedKeyword || currentSeed) === currentSeedFilter);
 
+  const autocompleteCount = filteredBySeed.filter(r => r.type === 'autocomplete').length;
   const suffixCount = filteredBySeed.filter(r => r.type === 'suffix').length;
   const prefixCount = filteredBySeed.filter(r => r.type === 'prefix').length;
 
   if (elements.tabAll) elements.tabAll.textContent = `All (${filteredBySeed.length})`;
+  if (elements.tabAutocomplete) elements.tabAutocomplete.textContent = `Auto-Suggest (${autocompleteCount})`;
   if (elements.tabSuffix) elements.tabSuffix.textContent = `After (${suffixCount})`;
   if (elements.tabPrefix) elements.tabPrefix.textContent = `Before (${prefixCount})`;
 
@@ -495,7 +535,10 @@ function renderResultsTable() {
       tagTitle = `${len} characters (Near Etsy 20-character tag limit)`;
     }
 
-    const seedLabel = item.seedKeyword || currentSeed;
+    const isAuto = item.type === 'autocomplete';
+    const seedLabel = isAuto ? 'Auto-Suggest' : (item.seedKeyword || currentSeed);
+    const seedChipClass = isAuto ? 'seed-chip seed-chip--auto' : 'seed-chip';
+    const seedTitle = item.seedKeyword ? `Seed: ${item.seedKeyword}` : seedLabel;
     const etsySearchUrl = `https://www.etsy.com/search?q=${encodeURIComponent(item.keyword)}`;
 
     tr.innerHTML = `
@@ -508,7 +551,7 @@ function renderResultsTable() {
         <span class="tag-badge ${tagBadgeClass}" title="${tagTitle}">${len}c</span>
       </td>
       <td class="col-seed">
-        <span class="seed-chip" title="${escapeHTML(seedLabel)}">${escapeHTML(seedLabel)}</span>
+        <span class="${seedChipClass}" title="${escapeHTML(seedTitle)}">${escapeHTML(seedLabel)}</span>
       </td>
       <td class="col-link">
         <a class="ext-link" href="${etsySearchUrl}" target="_blank" rel="noopener" title="Search on Etsy">
@@ -628,6 +671,27 @@ function bindEvents() {
       }
     });
   });
+
+  // Deep Auto-Suggest Expansion Toggle & Branch Depth Pills
+  if (elements.deepExpansionToggle) {
+    elements.deepExpansionToggle.addEventListener('change', (e) => {
+      if (elements.deepOptionsContainer) {
+        elements.deepOptionsContainer.style.opacity = e.target.checked ? '1' : '0.4';
+        elements.deepOptionsContainer.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+      }
+    });
+  }
+
+  if (elements.branchDepthGroup) {
+    elements.branchDepthGroup.querySelectorAll('.radio-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        elements.branchDepthGroup.querySelectorAll('.radio-pill').forEach(b => b.classList.remove('radio-pill--active'));
+        btn.classList.add('radio-pill--active');
+        selectedBranchLimit = btn.dataset.depth;
+        showToast(`Branch depth: ${btn.textContent.trim()}`);
+      });
+    });
+  }
 
   // Start Scan CTA
   if (elements.btnStart) {
@@ -856,11 +920,13 @@ async function handleStartScanClick() {
 
   const mode = document.querySelector('input[name="scan-mode"]:checked')?.value || 'both';
   const testMode = elements.testModeToggle?.checked || false;
+  const deepExpansion = elements.deepExpansionToggle ? elements.deepExpansionToggle.checked : true;
+  const branchLimit = selectedBranchLimit;
 
   try {
     await chrome.runtime.sendMessage({
       type: 'START_SCAN',
-      payload: { keywords: seedList, mode, testMode },
+      payload: { keywords: seedList, mode, testMode, deepExpansion, branchLimit },
     });
   } catch (err) {
     showToast(`Failed to start scan: ${err.message}`);

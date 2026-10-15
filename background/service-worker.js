@@ -47,7 +47,7 @@ function broadcast(message) {
   }
 }
 
-async function handleStartScan({ keywords, keyword, mode = 'both', testMode = false }) {
+async function handleStartScan({ keywords, keyword, mode = 'both', testMode = false, deepExpansion = true, branchLimit = 3 }) {
   if (activeAbortController) {
     activeAbortController.abort();
     activeAbortController = null;
@@ -67,7 +67,8 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
   }
 
   const scanId = `scan_${Date.now()}`;
-  const totalQueries = seedList.length * (mode === 'both' ? 52 : 26);
+  const branchMultiplier = deepExpansion ? (branchLimit === 'all' ? 4 : (Number(branchLimit) + 1)) : 1;
+  const totalQueries = seedList.length * (mode === 'both' ? 52 : 26) * branchMultiplier;
 
   const scanState = {
     id: scanId,
@@ -76,11 +77,16 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
     currentSeed: seedList[0],
     seedIndex: 1,
     totalSeeds: seedList.length,
+    branchName: seedList[0],
+    branchIndex: 1,
+    totalBranches: seedList.length,
     mode,
+    deepExpansion,
+    branchLimit,
     status: 'running',
     currentStep: 0,
     totalSteps: totalQueries,
-    currentLetter: 'A',
+    currentLetter: deepExpansion ? 'AUTO' : 'A',
     currentType: mode === 'prefix' ? 'prefix' : 'suffix',
     results: [],
     startTime: Date.now(),
@@ -96,6 +102,8 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
       mode,
       delayMs: settings.delayMs,
       testMode: effectiveTestMode,
+      deepExpansion,
+      branchLimit,
       etsyTabId: etsyTab?.id || null,
       signal,
       onProgress: async (progress) => {
@@ -104,9 +112,16 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
         scanState.currentSeed = progress.currentSeed;
         scanState.seedIndex = progress.seedIndex;
         scanState.totalSeeds = progress.totalSeeds;
+        scanState.branchName = progress.branchName || progress.currentSeed;
+        scanState.branchIndex = progress.branchIndex || progress.seedIndex;
+        scanState.totalBranches = progress.totalBranches || progress.totalSeeds;
+        scanState.rootSeed = progress.rootSeed || progress.currentSeed;
         scanState.currentLetter = progress.letter;
         scanState.currentType = progress.type;
-        scanState.results.push(...progress.newResults);
+        scanState.statusMessage = progress.statusMessage || '';
+        if (progress.newResults && progress.newResults.length > 0) {
+          scanState.results.push(...progress.newResults);
+        }
 
         await setCurrentScan(scanState);
         await setBadge(String(scanState.results.length), '#4032C9');
@@ -119,6 +134,11 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
             currentSeed: progress.currentSeed,
             seedIndex: progress.seedIndex,
             totalSeeds: progress.totalSeeds,
+            branchName: progress.branchName || progress.currentSeed,
+            branchIndex: progress.branchIndex || progress.seedIndex,
+            totalBranches: progress.totalBranches || progress.totalSeeds,
+            rootSeed: progress.rootSeed || progress.currentSeed,
+            statusMessage: progress.statusMessage || '',
             currentStepForSeed: progress.currentStepForSeed,
             totalStepsForSeed: progress.totalStepsForSeed,
             letter: progress.letter,
