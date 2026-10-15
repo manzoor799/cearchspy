@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "CearchSpy — Etsy Keyword Research",
-  "version": "1.0.0",
-  "description": "Automate Etsy Alphabet Soup (A–Z suffix & prefix) keyword research, filter out irrelevant suggestions, and export to CSV.",
+  "name": "E Keyword Spy — Etsy Keyword & Tag Research",
+  "short_name": "E Keyword Spy",
+  "version": "1.1.0",
+  "description": "Professional Etsy keyword research & Alphabet Soup expander. Uncover real buyer autocomplete suggestions across A–Z in real time.",
   "permissions": [
     "storage",
     "tabs",
-    "scripting"
+    "scripting",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://www.etsy.com/*",
@@ -14,7 +16,7 @@
   ],
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "CearchSpy — Etsy Keyword Research",
+    "default_title": "E Keyword Spy — Etsy Keyword Research",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",

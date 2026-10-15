@@ -28,7 +28,7 @@ async function findEtsyTab() {
   return null;
 }
 
-async function setBadge(text, color = '#F1641E') {
+async function setBadge(text, color = '#4032C9') {
   try {
     await chrome.action.setBadgeText({ text: text || '' });
     if (text) {
@@ -87,7 +87,7 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
   };
 
   await setCurrentScan(scanState);
-  await setBadge('...', '#F1641E');
+  await setBadge('...', '#4032C9');
   broadcast({ type: 'SCAN_STARTED', scan: scanState });
 
   try {
@@ -109,7 +109,7 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
         scanState.results.push(...progress.newResults);
 
         await setCurrentScan(scanState);
-        await setBadge(String(scanState.results.length), '#F1641E');
+        await setBadge(String(scanState.results.length), '#4032C9');
 
         broadcast({
           type: 'SCAN_PROGRESS',
@@ -137,7 +137,7 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
 
     await setCurrentScan(scanState);
     await saveScanToHistory(scanState);
-    await setBadge(String(results.length), '#22C55E');
+    await setBadge(String(results.length), '#15803D');
 
     if (etsyTab?.id) {
       chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
@@ -155,10 +155,10 @@ async function handleStartScan({ keywords, keyword, mode = 'both', testMode = fa
       await setBadge('');
       broadcast({ type: 'SCAN_CANCELLED' });
     } else {
-      console.error('CearchSpy: Scan error', error);
+      console.error('E Keyword Spy: Scan error', error);
       scanState.status = 'idle';
       await setCurrentScan(scanState);
-      await setBadge('ERR', '#EF4444');
+      await setBadge('ERR', '#DC2626');
       broadcast({ type: 'SCAN_ERROR', error: error.message });
     }
   } finally {

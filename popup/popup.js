@@ -1,9 +1,14 @@
 /**
- * CearchSpy — Popup UI Controller
+ * E Keyword Spy — Popup UI Controller
  *
- * Manages UI states, user inputs, multi-seed batch queues, live progress updates,
- * table filtering with seed selector, Etsy tag length analysis, CSV export,
- * and history navigation.
+ * Modern SaaS Chrome Extension (Manifest V3) for Etsy Keyword Research.
+ * Features:
+ * - Multi-seed keyword batch queue
+ * - Real-time live typing metrics & ETA calculation
+ * - Dynamic data table with Etsy tag character counter (<=20c vs >20c)
+ * - Directional filtering (All / After / Before) & seed scoping
+ * - 1-Click CSV export & 13 Etsy Tags clipboard extraction
+ * - Reactive local state via chrome.storage.local and chrome.storage.onChanged
  */
 
 import { downloadCSV, copyToClipboard, copyEtsyTags } from '../lib/csv-export.js';
@@ -19,7 +24,7 @@ import {
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-// App State
+// Application State
 let currentResults = [];
 let currentFilter = 'all'; // 'all' | 'suffix' | 'prefix'
 let currentSeedFilter = 'all'; // 'all' | specific seed keyword
@@ -29,7 +34,7 @@ let currentSeedList = [];
 let selectedIndices = new Set();
 let activeScanData = null;
 
-// DOM Elements
+// Views
 const views = {
   input: document.getElementById('view-input'),
   scanning: document.getElementById('view-scanning'),
@@ -37,35 +42,39 @@ const views = {
   history: document.getElementById('view-history'),
 };
 
+// DOM Elements
 const elements = {
-  // Input
-  seedKeyword: document.getElementById('seed-keyword'),
-  seedBadge: document.getElementById('seed-badge'),
-  inputError: document.getElementById('input-error'),
-  btnStart: document.getElementById('btn-start'),
-  testModeToggle: document.getElementById('test-mode-toggle'),
+  // Connection
   connectionBar: document.getElementById('connection-bar'),
   statusDot: document.getElementById('status-dot'),
   statusText: document.getElementById('status-text'),
   btnHistory: document.getElementById('btn-history'),
 
-  // Scanning
+  // View 1: Setup & Configuration
+  seedKeyword: document.getElementById('seed-keyword'),
+  seedBadge: document.getElementById('seed-badge'),
+  inputError: document.getElementById('input-error'),
+  testModeToggle: document.getElementById('test-mode-toggle'),
+  btnStart: document.getElementById('btn-start'),
+
+  // View 2: Live Scanning
   scanKeywordLabel: document.getElementById('scan-keyword-label'),
   scanModeLabel: document.getElementById('scan-mode-label'),
   btnCancel: document.getElementById('btn-cancel'),
   progressCounter: document.getElementById('progress-counter'),
   progressFill: document.getElementById('progress-fill'),
+  statFound: document.getElementById('stat-found'),
+  statQuery: document.getElementById('stat-query'),
+  statEta: document.getElementById('stat-eta'),
   suffixSection: document.getElementById('suffix-section'),
   prefixSection: document.getElementById('prefix-section'),
   suffixGrid: document.getElementById('suffix-grid'),
   prefixGrid: document.getElementById('prefix-grid'),
   suffixLabel: document.getElementById('suffix-label'),
   prefixLabel: document.getElementById('prefix-label'),
-  statFound: document.getElementById('stat-found'),
-  statQuery: document.getElementById('stat-query'),
   liveFeedList: document.getElementById('live-feed-list'),
 
-  // Results
+  // View 3: Results & Data Table
   resultsKeywordLabel: document.getElementById('results-keyword-label'),
   resultsMeta: document.getElementById('results-meta'),
   btnResultsNew: document.getElementById('btn-results-new'),
@@ -81,14 +90,14 @@ const elements = {
   btnCopyTags: document.getElementById('btn-copy-tags'),
   btnCopy: document.getElementById('btn-copy'),
 
-  // History
+  // View 4: History
   btnHistoryBack: document.getElementById('btn-history-back'),
   btnClearHistory: document.getElementById('btn-clear-history'),
   historyList: document.getElementById('history-list'),
   historyEmpty: document.getElementById('history-empty'),
   btnStartFirst: document.getElementById('btn-start-first'),
 
-  // Toast
+  // Notifications
   toast: document.getElementById('toast'),
 };
 
@@ -98,16 +107,19 @@ const elements = {
  */
 function switchView(viewName) {
   Object.keys(views).forEach(name => {
-    views[name].classList.toggle('view--active', name === viewName);
+    if (views[name]) {
+      views[name].classList.toggle('view--active', name === viewName);
+    }
   });
 }
 
 /**
- * Displays a non-intrusive toast message.
+ * Displays a non-intrusive floating pill toast.
  * @param {string} message
  * @param {number} [duration]
  */
-function showToast(message, duration = 2500) {
+function showToast(message, duration = 2400) {
+  if (!elements.toast) return;
   elements.toast.textContent = message;
   elements.toast.classList.add('toast--visible');
   setTimeout(() => {
@@ -128,9 +140,10 @@ async function initializeApp() {
 }
 
 function updateSeedBadge() {
+  if (!elements.seedKeyword || !elements.seedBadge) return;
   const seeds = parseSeedKeywords(elements.seedKeyword.value);
   if (seeds.length <= 1) {
-    elements.seedBadge.textContent = `${seeds.length || 0} keyword`;
+    elements.seedBadge.textContent = `${seeds.length || 0} keyword ready`;
   } else {
     elements.seedBadge.textContent = `${seeds.length} seeds in queue`;
   }
@@ -144,16 +157,17 @@ async function loadSavedSettings() {
 }
 
 async function checkEtsyConnection() {
+  if (!elements.statusDot || !elements.statusText) return;
   try {
     const response = await chrome.runtime.sendMessage({ type: 'CHECK_ETSY_CONNECTION' });
     if (response?.connected) {
       elements.statusDot.className = 'status-dot status-dot--connected';
-      elements.statusText.textContent = '🟢 Etsy Tab Connected (Live Search Bar Automation)';
+      elements.statusText.textContent = 'Etsy Tab Connected (Live Search Bar Automation)';
     } else {
       elements.statusDot.className = 'status-dot status-dot--idle';
-      elements.statusText.textContent = elements.testModeToggle.checked
-        ? '⚡ Instant Test Mode (Ready)'
-        : '⚪ Standalone Mode (Direct API)';
+      elements.statusText.textContent = elements.testModeToggle?.checked
+        ? 'Instant Test Mode (Ready)'
+        : 'Standalone Mode (Direct API)';
     }
   } catch {
     elements.statusDot.className = 'status-dot status-dot--idle';
@@ -179,13 +193,13 @@ async function rehydrateState() {
       switchView('input');
     }
   } catch (err) {
-    console.error('CearchSpy: rehydration error', err);
+    console.error('E Keyword Spy: rehydration error', err);
     switchView('input');
   }
 }
 
 // ==========================================
-// SCANNING VIEW SETUP & UPDATES
+// SCANNING VIEW SETUP & PROGRESS
 // ==========================================
 
 function setupScanningView(scan) {
@@ -194,17 +208,29 @@ function setupScanningView(scan) {
   const seedIndex = scan.seedIndex || 1;
   const totalSeeds = scan.totalSeeds || 1;
 
-  elements.scanKeywordLabel.textContent = `Scanning: "${currentSeed}"`;
-  const seedPrefixText = totalSeeds > 1 ? `Seed ${seedIndex} of ${totalSeeds} · ` : '';
-  elements.scanModeLabel.textContent = `${seedPrefixText}${scan.mode.toUpperCase()} mode`;
-  elements.suffixLabel.textContent = currentSeed;
-  elements.prefixLabel.textContent = currentSeed;
+  if (elements.scanKeywordLabel) {
+    elements.scanKeywordLabel.textContent = `Scanning: "${currentSeed}"`;
+  }
+  if (elements.scanModeLabel) {
+    const seedPrefixText = totalSeeds > 1 ? `Seed ${seedIndex} of ${totalSeeds} · ` : '';
+    elements.scanModeLabel.textContent = `${seedPrefixText}${scan.mode.toUpperCase()} mode`;
+  }
+  if (elements.suffixLabel) elements.suffixLabel.textContent = currentSeed;
+  if (elements.prefixLabel) elements.prefixLabel.textContent = currentSeed;
 
-  elements.suffixSection.style.display = (scan.mode === 'prefix') ? 'none' : 'block';
-  elements.prefixSection.style.display = (scan.mode === 'suffix') ? 'none' : 'block';
+  if (elements.suffixSection) {
+    elements.suffixSection.style.display = (scan.mode === 'prefix') ? 'none' : 'block';
+  }
+  if (elements.prefixSection) {
+    elements.prefixSection.style.display = (scan.mode === 'suffix') ? 'none' : 'block';
+  }
 
-  renderLetterGrid(elements.suffixGrid, scan.currentLetter, scan.currentType === 'suffix');
-  renderLetterGrid(elements.prefixGrid, scan.currentLetter, scan.currentType === 'prefix');
+  if (elements.suffixGrid) {
+    renderLetterGrid(elements.suffixGrid, scan.currentLetter, scan.currentType === 'suffix');
+  }
+  if (elements.prefixGrid) {
+    renderLetterGrid(elements.prefixGrid, scan.currentLetter, scan.currentType === 'prefix');
+  }
 
   updateScanningProgress({
     overallStep: scan.currentStep || 0,
@@ -218,14 +244,17 @@ function setupScanningView(scan) {
     totalFound: scan.results?.length || 0,
   });
 
-  elements.liveFeedList.innerHTML = '';
-  if (scan.results && scan.results.length > 0) {
-    const recent = scan.results.slice(-15);
-    recent.forEach(r => appendLiveFeedItem(r));
+  if (elements.liveFeedList) {
+    elements.liveFeedList.innerHTML = '';
+    if (scan.results && scan.results.length > 0) {
+      const recent = scan.results.slice(-15);
+      recent.forEach(r => appendLiveFeedItem(r));
+    }
   }
 }
 
 function renderLetterGrid(container, activeLetter, isThisTypeActive) {
+  if (!container) return;
   container.innerHTML = '';
   const activeCode = (activeLetter || 'A').toUpperCase().charCodeAt(0);
 
@@ -255,22 +284,40 @@ function updateScanningProgress(progress) {
     ? Math.min(100, Math.round((progress.overallStep / progress.totalOverallSteps) * 100))
     : 0;
 
-  elements.progressCounter.textContent = `${progress.overallStep} / ${progress.totalOverallSteps}`;
-  elements.progressFill.style.width = `${percent}%`;
-
-  if (progress.currentSeed) {
-    elements.scanKeywordLabel.textContent = `Scanning: "${progress.currentSeed}"`;
-    elements.suffixLabel.textContent = progress.currentSeed;
-    elements.prefixLabel.textContent = progress.currentSeed;
+  if (elements.progressCounter) {
+    elements.progressCounter.textContent = `${progress.overallStep} / ${progress.totalOverallSteps} queries`;
+  }
+  if (elements.progressFill) {
+    elements.progressFill.style.width = `${percent}%`;
   }
 
-  const seedPrefixText = progress.totalSeeds > 1
-    ? `Seed ${progress.seedIndex} of ${progress.totalSeeds} · `
-    : '';
-  elements.scanModeLabel.textContent = `${seedPrefixText}${progress.type.toUpperCase()} mode`;
+  if (progress.currentSeed) {
+    if (elements.scanKeywordLabel) {
+      elements.scanKeywordLabel.textContent = `Scanning: "${progress.currentSeed}"`;
+    }
+    if (elements.suffixLabel) elements.suffixLabel.textContent = progress.currentSeed;
+    if (elements.prefixLabel) elements.prefixLabel.textContent = progress.currentSeed;
+  }
 
-  elements.statFound.textContent = String(progress.totalFound);
-  elements.statQuery.textContent = `${progress.letter} (${progress.type === 'suffix' ? 'Suf' : 'Pre'})`;
+  if (elements.scanModeLabel) {
+    const seedPrefixText = progress.totalSeeds > 1
+      ? `Seed ${progress.seedIndex} of ${progress.totalSeeds} · `
+      : '';
+    elements.scanModeLabel.textContent = `${seedPrefixText}${progress.type.toUpperCase()} mode`;
+  }
+
+  if (elements.statFound) {
+    elements.statFound.textContent = String(progress.totalFound);
+  }
+  if (elements.statQuery) {
+    const dirLabel = progress.type === 'suffix' ? 'After' : 'Before';
+    elements.statQuery.textContent = `${progress.letter} (${dirLabel})`;
+  }
+  if (elements.statEta) {
+    const remaining = Math.max(0, progress.totalOverallSteps - progress.overallStep);
+    const estSeconds = Math.ceil(remaining * 0.08);
+    elements.statEta.textContent = estSeconds <= 1 ? '<1s' : `~${estSeconds}s`;
+  }
 
   updateLetterInGrid(elements.suffixGrid, progress.letter, progress.type === 'suffix');
   updateLetterInGrid(elements.prefixGrid, progress.letter, progress.type === 'prefix');
@@ -308,9 +355,10 @@ function updateLetterInGrid(grid, activeLetter, isActiveType) {
 }
 
 function appendLiveFeedItem(item) {
+  if (!elements.liveFeedList) return;
   const row = document.createElement('div');
   row.className = 'live-item';
-  const seedTag = item.seedKeyword ? ` <small style="color:#9CA3AF;">(${item.seedKeyword})</small>` : '';
+  const seedTag = item.seedKeyword ? ` <small style="color:var(--text-muted);">(${escapeHTML(item.seedKeyword)})</small>` : '';
   row.innerHTML = `
     <span class="live-item__keyword">${escapeHTML(item.keyword)}${seedTag}</span>
     <span class="live-item__source">${escapeHTML(item.source)}</span>
@@ -330,16 +378,20 @@ function displayResults(scan) {
   currentFilter = 'all';
   currentSeedFilter = 'all';
 
-  if (currentSeedList.length > 1) {
-    elements.resultsKeywordLabel.textContent = `${currentSeedList.length} Seeds in Batch`;
-  } else {
-    elements.resultsKeywordLabel.textContent = `"${currentSeed}"`;
+  if (elements.resultsKeywordLabel) {
+    if (currentSeedList.length > 1) {
+      elements.resultsKeywordLabel.textContent = `${currentSeedList.length} Seeds in Batch`;
+    } else {
+      elements.resultsKeywordLabel.textContent = `"${currentSeed}"`;
+    }
   }
 
-  const dateStr = scan.endTime ? new Date(scan.endTime).toLocaleDateString() : 'Today';
-  elements.resultsMeta.textContent = `${currentResults.length} keywords found · ${dateStr}`;
+  if (elements.resultsMeta) {
+    const dateStr = scan.endTime ? new Date(scan.endTime).toLocaleDateString() : 'Today';
+    elements.resultsMeta.textContent = `${currentResults.length} keywords found · ${dateStr}`;
+  }
 
-  elements.searchResults.value = '';
+  if (elements.searchResults) elements.searchResults.value = '';
   selectedIndices = new Set(currentResults.map((_, i) => i));
 
   populateSeedDropdown();
@@ -348,6 +400,7 @@ function displayResults(scan) {
 }
 
 function populateSeedDropdown() {
+  if (!elements.filterSeed) return;
   elements.filterSeed.innerHTML = `<option value="all">All Seeds (${currentResults.length})</option>`;
 
   const seedCounts = new Map();
@@ -377,12 +430,12 @@ function updateFilterTabs() {
   const suffixCount = filteredBySeed.filter(r => r.type === 'suffix').length;
   const prefixCount = filteredBySeed.filter(r => r.type === 'prefix').length;
 
-  elements.tabAll.textContent = `All (${filteredBySeed.length})`;
-  elements.tabSuffix.textContent = `After (${suffixCount})`;
-  elements.tabPrefix.textContent = `Before (${prefixCount})`;
+  if (elements.tabAll) elements.tabAll.textContent = `All (${filteredBySeed.length})`;
+  if (elements.tabSuffix) elements.tabSuffix.textContent = `After (${suffixCount})`;
+  if (elements.tabPrefix) elements.tabPrefix.textContent = `Before (${prefixCount})`;
 
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('tab--active', t.dataset.filter === currentFilter);
+  document.querySelectorAll('.seg-tab').forEach(t => {
+    t.classList.toggle('seg-tab--active', t.dataset.filter === currentFilter);
   });
 }
 
@@ -398,7 +451,7 @@ function getFilteredResults() {
     if (currentSearch.trim()) {
       const q = currentSearch.trim().toLowerCase();
       const inKeyword = item.keyword.toLowerCase().includes(q);
-      const inSource = item.source.toLowerCase().includes(q);
+      const inSource = (item.source || '').toLowerCase().includes(q);
       const inSeed = (item.seedKeyword || '').toLowerCase().includes(q);
       return inKeyword || inSource || inSeed;
     }
@@ -407,18 +460,19 @@ function getFilteredResults() {
 }
 
 function renderResultsTable() {
+  if (!elements.resultsBody) return;
   const filtered = getFilteredResults();
   elements.resultsBody.innerHTML = '';
 
   if (filtered.length === 0) {
     elements.resultsBody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align:center;padding:24px;color:#9CA3AF;">
+        <td colspan="6" style="text-align:center;padding:28px 16px;color:var(--text-muted);font-size:12px;">
           No matching keywords found.
         </td>
       </tr>
     `;
-    elements.selectedCount.textContent = '0 selected';
+    if (elements.selectedCount) elements.selectedCount.textContent = '0 selected';
     return;
   }
 
@@ -430,29 +484,40 @@ function renderResultsTable() {
     const isChecked = selectedIndices.has(originalIndex);
 
     const len = (item.keyword || '').length;
-    const isTagFit = len <= 20;
-    const tagPillClass = isTagFit ? 'tag-pill--fit' : 'tag-pill--long';
-    const tagTitle = isTagFit
-      ? `${len} characters (Fits in Etsy 20-char tag limit)`
-      : `${len} characters (Too long for tag, use in title)`;
+    let tagBadgeClass = 'tag-badge--fit';
+    let tagTitle = `${len} characters (Fits within Etsy 20-character tag limit)`;
+
+    if (len > 20) {
+      tagBadgeClass = 'tag-badge--long';
+      tagTitle = `${len} characters (Exceeds Etsy 20-char tag limit - recommended for title/listing copy)`;
+    } else if (len >= 18) {
+      tagBadgeClass = 'tag-badge--warn';
+      tagTitle = `${len} characters (Near Etsy 20-character tag limit)`;
+    }
 
     const seedLabel = item.seedKeyword || currentSeed;
     const etsySearchUrl = `https://www.etsy.com/search?q=${encodeURIComponent(item.keyword)}`;
 
     tr.innerHTML = `
       <td class="col-check">
-        <input type="checkbox" data-index="${originalIndex}" ${isChecked ? 'checked' : ''}>
+        <input type="checkbox" data-index="${originalIndex}" ${isChecked ? 'checked' : ''} aria-label="Select keyword">
       </td>
       <td class="col-num">${index + 1}</td>
-      <td class="col-keyword">
-        ${escapeHTML(item.keyword)}
-      </td>
+      <td class="col-keyword">${escapeHTML(item.keyword)}</td>
       <td class="col-tag">
-        <span class="tag-pill ${tagPillClass}" title="${tagTitle}">${len}c</span>
+        <span class="tag-badge ${tagBadgeClass}" title="${tagTitle}">${len}c</span>
       </td>
-      <td class="col-seed"><span class="seed-chip">${escapeHTML(seedLabel)}</span></td>
-      <td class="col-ext">
-        <a class="ext-link" href="${etsySearchUrl}" target="_blank" rel="noopener" title="Search on Etsy">↗</a>
+      <td class="col-seed">
+        <span class="seed-chip" title="${escapeHTML(seedLabel)}">${escapeHTML(seedLabel)}</span>
+      </td>
+      <td class="col-link">
+        <a class="ext-link" href="${etsySearchUrl}" target="_blank" rel="noopener" title="Search on Etsy">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </a>
       </td>
     `;
 
@@ -464,6 +529,7 @@ function renderResultsTable() {
 }
 
 function updateSelectedCountDisplay() {
+  if (!elements.selectedCount || !elements.selectAll) return;
   const filtered = getFilteredResults();
   const visibleSelected = filtered.filter(item => {
     const idx = currentResults.indexOf(item);
@@ -479,17 +545,18 @@ function updateSelectedCountDisplay() {
 // ==========================================
 
 async function loadHistoryView() {
+  if (!elements.historyList) return;
   const history = await getScanHistory();
   elements.historyList.innerHTML = '';
 
   if (!history || history.length === 0) {
-    elements.historyEmpty.style.display = 'flex';
-    elements.btnClearHistory.style.display = 'none';
+    if (elements.historyEmpty) elements.historyEmpty.style.display = 'flex';
+    if (elements.btnClearHistory) elements.btnClearHistory.style.display = 'none';
     return;
   }
 
-  elements.historyEmpty.style.display = 'none';
-  elements.btnClearHistory.style.display = 'block';
+  if (elements.historyEmpty) elements.historyEmpty.style.display = 'none';
+  if (elements.btnClearHistory) elements.btnClearHistory.style.display = 'block';
 
   history.forEach(scan => {
     const card = document.createElement('div');
@@ -502,16 +569,23 @@ async function loadHistoryView() {
       : scan.keyword;
 
     card.innerHTML = `
-      <div style="flex:1;">
-        <div class="history-card__keyword">${escapeHTML(seedText)}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="history-card__kw">${escapeHTML(seedText)}</div>
         <div class="history-card__meta">${dateStr} · ${scan.mode.toUpperCase()}</div>
       </div>
-      <div class="history-card__count">${count}</div>
-      <button class="history-card__del" data-id="${scan.id}" title="Delete scan">✕</button>
+      <div class="history-card__right">
+        <span class="history-card__count">${count}</span>
+        <button class="history-card__del" data-id="${scan.id}" title="Delete scan" aria-label="Delete scan">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
     `;
 
     card.addEventListener('click', (e) => {
-      if (e.target.classList.contains('history-card__del')) return;
+      if (e.target.closest('.history-card__del')) return;
       displayResults(scan);
       switchView('results');
     });
@@ -534,52 +608,66 @@ async function loadHistoryView() {
 
 function bindEvents() {
   // Real-time Seed Count Badge on Typing
-  elements.seedKeyword.addEventListener('input', updateSeedBadge);
+  if (elements.seedKeyword) {
+    elements.seedKeyword.addEventListener('input', updateSeedBadge);
+    elements.seedKeyword.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        handleStartScanClick();
+      }
+    });
+  }
 
   // Quick Preset Chips (1-Click Idea buttons)
   document.querySelectorAll('.preset-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       const kw = btn.dataset.keyword;
-      elements.seedKeyword.value = kw;
-      updateSeedBadge();
-      showToast(`Selected "${kw}"`);
+      if (elements.seedKeyword && kw) {
+        elements.seedKeyword.value = kw;
+        updateSeedBadge();
+        showToast(`Selected "${kw}"`);
+      }
     });
   });
 
-  // Start Scan
-  elements.btnStart.addEventListener('click', handleStartScanClick);
-  elements.seedKeyword.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      handleStartScanClick();
-    }
-  });
+  // Start Scan CTA
+  if (elements.btnStart) {
+    elements.btnStart.addEventListener('click', handleStartScanClick);
+  }
 
-  // Cancel Scan
-  elements.btnCancel.addEventListener('click', async () => {
-    await chrome.runtime.sendMessage({ type: 'CANCEL_SCAN' });
-  });
+  // Cancel Scan CTA
+  if (elements.btnCancel) {
+    elements.btnCancel.addEventListener('click', async () => {
+      await chrome.runtime.sendMessage({ type: 'CANCEL_SCAN' });
+    });
+  }
 
-  // Test Mode Toggle
-  elements.testModeToggle.addEventListener('change', async (e) => {
-    await saveSettings({ testMode: e.target.checked });
-    await checkEtsyConnection();
-  });
+  // Instant Test Mode Toggle
+  if (elements.testModeToggle) {
+    elements.testModeToggle.addEventListener('change', async (e) => {
+      await saveSettings({ testMode: e.target.checked });
+      await checkEtsyConnection();
+    });
+  }
 
-  // Search Results
-  elements.searchResults.addEventListener('input', (e) => {
-    currentSearch = e.target.value;
-    renderResultsTable();
-  });
+  // Keyword Search Results Filter
+  if (elements.searchResults) {
+    elements.searchResults.addEventListener('input', (e) => {
+      currentSearch = e.target.value;
+      renderResultsTable();
+    });
+  }
 
   // Seed Filter Dropdown
-  elements.filterSeed.addEventListener('change', (e) => {
-    currentSeedFilter = e.target.value;
-    updateFilterTabs();
-    renderResultsTable();
-  });
+  if (elements.filterSeed) {
+    elements.filterSeed.addEventListener('change', (e) => {
+      currentSeedFilter = e.target.value;
+      updateFilterTabs();
+      renderResultsTable();
+    });
+  }
 
-  // Filter Tabs
-  document.querySelectorAll('.tab').forEach(tab => {
+  // Segmented Direction Filter Tabs
+  document.querySelectorAll('.seg-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       currentFilter = tab.dataset.filter;
       updateFilterTabs();
@@ -588,97 +676,117 @@ function bindEvents() {
   });
 
   // Select All Checkbox
-  elements.selectAll.addEventListener('change', (e) => {
-    const checked = e.target.checked;
-    const filtered = getFilteredResults();
-    filtered.forEach(item => {
-      const idx = currentResults.indexOf(item);
-      if (checked) {
-        selectedIndices.add(idx);
-      } else {
-        selectedIndices.delete(idx);
-      }
+  if (elements.selectAll) {
+    elements.selectAll.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      const filtered = getFilteredResults();
+      filtered.forEach(item => {
+        const idx = currentResults.indexOf(item);
+        if (checked) {
+          selectedIndices.add(idx);
+        } else {
+          selectedIndices.delete(idx);
+        }
+      });
+      renderResultsTable();
     });
-    renderResultsTable();
-  });
+  }
 
   // Individual Table Checkboxes
-  elements.resultsBody.addEventListener('change', (e) => {
-    if (e.target.type === 'checkbox') {
-      const idx = parseInt(e.target.dataset.index, 10);
-      if (e.target.checked) {
-        selectedIndices.add(idx);
-      } else {
-        selectedIndices.delete(idx);
+  if (elements.resultsBody) {
+    elements.resultsBody.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox') {
+        const idx = parseInt(e.target.dataset.index, 10);
+        if (e.target.checked) {
+          selectedIndices.add(idx);
+        } else {
+          selectedIndices.delete(idx);
+        }
+        updateSelectedCountDisplay();
       }
-      updateSelectedCountDisplay();
-    }
-  });
+    });
+  }
 
   // CSV Export Button
-  elements.btnCsv.addEventListener('click', () => {
-    const exportItems = currentResults.filter((_, i) => selectedIndices.has(i));
-    if (exportItems.length === 0) {
-      showToast('⚠️ No keywords selected');
-      return;
-    }
-    try {
-      const filename = downloadCSV(exportItems, currentSeed);
-      showToast(`⬇️ Downloaded ${filename}`);
-    } catch (err) {
-      showToast(`Error: ${err.message}`);
-    }
-  });
+  if (elements.btnCsv) {
+    elements.btnCsv.addEventListener('click', () => {
+      const exportItems = currentResults.filter((_, i) => selectedIndices.has(i));
+      if (exportItems.length === 0) {
+        showToast('No keywords selected');
+        return;
+      }
+      try {
+        const filename = downloadCSV(exportItems, currentSeed);
+        showToast(`Downloaded ${filename}`);
+      } catch (err) {
+        showToast(`Error: ${err.message}`);
+      }
+    });
+  }
 
   // Copy 13 Etsy Tags Button (<=20 chars)
-  elements.btnCopyTags.addEventListener('click', async () => {
-    const candidateItems = currentResults.filter((_, i) => selectedIndices.has(i));
-    const pool = candidateItems.length > 0 ? candidateItems : currentResults;
-    const count = await copyEtsyTags(pool, 13);
-    if (count === 0) {
-      showToast('⚠️ No tags found under 20 chars');
-    } else {
-      showToast(`🏷️ Copied ${count} tags formatted for Etsy!`);
-    }
-  });
+  if (elements.btnCopyTags) {
+    elements.btnCopyTags.addEventListener('click', async () => {
+      const candidateItems = currentResults.filter((_, i) => selectedIndices.has(i));
+      const pool = candidateItems.length > 0 ? candidateItems : currentResults;
+      const count = await copyEtsyTags(pool, 13);
+      if (count === 0) {
+        showToast('No tags found under 20 characters');
+      } else {
+        showToast(`Copied ${count} tags formatted for Etsy`);
+      }
+    });
+  }
 
-  // Copy All Keywords Button
-  elements.btnCopy.addEventListener('click', async () => {
-    const copyItems = currentResults.filter((_, i) => selectedIndices.has(i));
-    if (copyItems.length === 0) {
-      showToast('⚠️ No keywords selected');
-      return;
-    }
-    const count = await copyToClipboard(copyItems);
-    showToast(`✅ Copied ${count} keywords to clipboard!`);
-  });
+  // Copy All Selected Keywords Button
+  if (elements.btnCopy) {
+    elements.btnCopy.addEventListener('click', async () => {
+      const copyItems = currentResults.filter((_, i) => selectedIndices.has(i));
+      if (copyItems.length === 0) {
+        showToast('No keywords selected');
+        return;
+      }
+      const count = await copyToClipboard(copyItems);
+      showToast(`Copied ${count} keywords to clipboard`);
+    });
+  }
 
-  // New Scan
-  elements.btnResultsNew.addEventListener('click', () => {
-    switchView('input');
-  });
+  // New Scan Button
+  if (elements.btnResultsNew) {
+    elements.btnResultsNew.addEventListener('click', () => {
+      switchView('input');
+    });
+  }
 
   // History Navigation
-  elements.btnHistory.addEventListener('click', async () => {
-    await loadHistoryView();
-    switchView('history');
-  });
-
-  elements.btnHistoryBack.addEventListener('click', () => {
-    switchView('input');
-  });
-
-  elements.btnStartFirst.addEventListener('click', () => {
-    switchView('input');
-  });
-
-  elements.btnClearHistory.addEventListener('click', async () => {
-    if (confirm('Clear all scan history?')) {
-      await clearAllHistory();
+  if (elements.btnHistory) {
+    elements.btnHistory.addEventListener('click', async () => {
       await loadHistoryView();
-      showToast('History cleared');
-    }
-  });
+      switchView('history');
+    });
+  }
+
+  if (elements.btnHistoryBack) {
+    elements.btnHistoryBack.addEventListener('click', () => {
+      switchView('input');
+    });
+  }
+
+  if (elements.btnStartFirst) {
+    elements.btnStartFirst.addEventListener('click', () => {
+      switchView('input');
+    });
+  }
+
+  if (elements.btnClearHistory) {
+    elements.btnClearHistory.addEventListener('click', async () => {
+      if (confirm('Clear all scan history?')) {
+        await clearAllHistory();
+        await loadHistoryView();
+        showToast('History cleared');
+      }
+    });
+  }
 
   // Message Listener from Background Worker
   chrome.runtime.onMessage.addListener((message) => {
@@ -697,7 +805,7 @@ function bindEvents() {
       case 'SCAN_COMPLETED':
         displayResults(message.scan);
         switchView('results');
-        showToast(`🎉 Scan complete! Found ${message.scan.results.length} keywords.`);
+        showToast(`Scan complete. Found ${message.scan.results.length} keywords.`);
         break;
 
       case 'SCAN_CANCELLED':
@@ -709,6 +817,25 @@ function bindEvents() {
         showToast(`Scan error: ${message.error}`);
         switchView('input');
         break;
+    }
+  });
+
+  // Reactive Storage State Listener
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    const scanChange = changes.cearchspy_current_scan || changes.ekeywordspy_current_scan;
+    if (scanChange) {
+      const next = scanChange.newValue;
+      if (!next) {
+        if (!views.input.classList.contains('view--active')) {
+          switchView('input');
+        }
+      } else if (next.status === 'running') {
+        if (!views.scanning.classList.contains('view--active')) {
+          setupScanningView(next);
+          switchView('scanning');
+        }
+      }
     }
   });
 }
@@ -728,7 +855,7 @@ async function handleStartScanClick() {
   elements.seedKeyword.classList.remove('text-input--error');
 
   const mode = document.querySelector('input[name="scan-mode"]:checked')?.value || 'both';
-  const testMode = elements.testModeToggle.checked;
+  const testMode = elements.testModeToggle?.checked || false;
 
   try {
     await chrome.runtime.sendMessage({
@@ -750,5 +877,5 @@ function escapeHTML(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Start
+// Boot application
 initializeApp();

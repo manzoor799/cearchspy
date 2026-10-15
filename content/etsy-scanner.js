@@ -1,5 +1,5 @@
 /**
- * CearchSpy — Content Script for Etsy.com
+ * E Keyword Spy — Content Script for Etsy.com
  *
  * Runs directly inside the Etsy tab:
  * 1. Live Typing Movement: Physically types queries into Etsy's search bar
@@ -7,13 +7,13 @@
  *    the user sees the live search bar movement on the Etsy page!
  * 2. Real-Time Autocomplete Extraction: Pulls live suggestions directly from
  *    Etsy's active session and autocomplete dropdown.
- * 3. Floating Status Overlay: Displays a non-intrusive live progress HUD on Etsy.
+ * 3. Modern SaaS HUD Overlay: Displays a non-intrusive live progress HUD on Etsy.
  */
 
 (() => {
   // Prevent duplicate injection
-  if (window.__cearchspy_injected) return;
-  window.__cearchspy_injected = true;
+  if (window.__ekeywordspy_injected) return;
+  window.__ekeywordspy_injected = true;
 
   let activeIndicator = null;
   let activeSearchInput = null;
@@ -30,6 +30,7 @@
 
   /**
    * Visually types the query into Etsy's search input with live focus and input events.
+   * Uses brand primary (#4032C9) for the active outline.
    * @param {string} query
    */
   function typeIntoEtsySearchBar(query) {
@@ -38,16 +39,16 @@
 
     activeSearchInput = input;
 
-    // Highlight Etsy's search bar with an active CearchSpy border
-    if (!input.dataset.cearchspyActive) {
-      input.dataset.cearchspyActive = 'true';
+    // Highlight Etsy's search bar with an active E Keyword Spy border (#4032C9)
+    if (!input.dataset.ekeywordspyActive) {
+      input.dataset.ekeywordspyActive = 'true';
       input.dataset.origBorder = input.style.border || '';
       input.dataset.origBoxShadow = input.style.boxShadow || '';
       input.dataset.origTransition = input.style.transition || '';
     }
 
-    input.style.border = '2px solid #F1641E';
-    input.style.boxShadow = '0 0 12px rgba(241, 100, 30, 0.45)';
+    input.style.border = '2px solid #4032C9';
+    input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.22)';
     input.style.transition = 'all 120ms ease';
 
     // Set text value
@@ -73,11 +74,11 @@
    * Restores Etsy's search bar to its original state when done.
    */
   function resetEtsySearchBar() {
-    if (activeSearchInput && activeSearchInput.dataset.cearchspyActive) {
+    if (activeSearchInput && activeSearchInput.dataset.ekeywordspyActive) {
       activeSearchInput.style.border = activeSearchInput.dataset.origBorder || '';
       activeSearchInput.style.boxShadow = activeSearchInput.dataset.origBoxShadow || '';
       activeSearchInput.style.transition = activeSearchInput.dataset.origTransition || '';
-      delete activeSearchInput.dataset.cearchspyActive;
+      delete activeSearchInput.dataset.ekeywordspyActive;
     }
     activeSearchInput = null;
   }
@@ -89,42 +90,42 @@
   function showStatusIndicator(text) {
     if (!activeIndicator) {
       activeIndicator = document.createElement('div');
-      activeIndicator.id = 'cearchspy-page-indicator';
+      activeIndicator.id = 'ekeywordspy-page-indicator';
       Object.assign(activeIndicator.style, {
         position: 'fixed',
         bottom: '24px',
         right: '24px',
         zIndex: '9999999',
-        backgroundColor: '#111827',
+        backgroundColor: '#0F172A',
         color: '#FFFFFF',
-        padding: '10px 16px',
-        borderRadius: '30px',
+        padding: '9px 15px',
+        borderRadius: '24px',
         fontSize: '12px',
         fontWeight: '600',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+        boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.35), 0 8px 10px -6px rgba(15, 23, 42, 0.2)',
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
+        gap: '9px',
         pointerEvents: 'none',
         transition: 'all 200ms ease',
-        border: '1px solid rgba(241, 100, 30, 0.4)',
+        border: '1px solid rgba(199, 210, 254, 0.35)',
       });
       document.body.appendChild(activeIndicator);
     }
     activeIndicator.innerHTML = `
-      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#F1641E;animation:cearchspy-pulse 1s infinite;"></span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px #818CF8;animation:ekeywordspy-pulse 1s infinite;"></span>
       <span>${text}</span>
     `;
 
     // Inject pulse keyframes if not present
-    if (!document.getElementById('cearchspy-styles')) {
+    if (!document.getElementById('ekeywordspy-styles')) {
       const style = document.createElement('style');
-      style.id = 'cearchspy-styles';
+      style.id = 'ekeywordspy-styles';
       style.textContent = `
-        @keyframes cearchspy-pulse {
+        @keyframes ekeywordspy-pulse {
           0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.3); opacity: 0.6; }
+          50% { transform: scale(1.35); opacity: 0.6; }
         }
       `;
       document.head.appendChild(style);
@@ -173,12 +174,13 @@
 
   /**
    * Scrapes suggestions from Etsy's live search dropdown DOM if open.
+   * Supports [data-ui="autocomplete-results"], ul[role="listbox"], etc.
    * @returns {string[]}
    */
   function scrapeDropdownDOM() {
     const suggestions = [];
     const container = document.querySelector(
-      '#global-enhancements-search-suggestions, [data-search-suggestions], div[role="listbox"], ul[role="listbox"]'
+      '#global-enhancements-search-suggestions, [data-search-suggestions], [data-ui="autocomplete-results"], div[role="listbox"], ul[role="listbox"]'
     );
     if (!container) return suggestions;
 
@@ -211,11 +213,11 @@
         const totalSeeds = message.totalSeeds || 1;
         const seedText = totalSeeds > 1 ? ` (Seed ${seedIndex}/${totalSeeds})` : '';
 
-        // 1. Physically type into Etsy's search bar with live movement!
+        // 1. Physically type into Etsy's search bar with live movement
         typeIntoEtsySearchBar(query);
 
         // 2. Update HUD overlay
-        showStatusIndicator(`CearchSpy: Typing "${query}"${seedText}`);
+        showStatusIndicator(`E Keyword Spy: "${query}"${seedText}`);
 
         // 3. Extract real-time suggestions from Etsy same-origin API
         let suggestions = await fetchSameOriginSuggest(query);

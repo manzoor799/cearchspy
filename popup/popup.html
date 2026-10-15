@@ -3,177 +3,223 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CearchSpy</title>
+  <title>E Keyword Spy</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="app">
 
-    <!-- Header -->
+    <!-- Header Bar -->
     <header class="header">
       <div class="header__brand">
-        <div class="header__logo">C</div>
+        <div class="header__logo" aria-hidden="true">E</div>
         <div class="header__text">
-          <h1 class="header__title">CearchSpy</h1>
-          <span class="header__subtitle">Etsy Keyword Research</span>
+          <h1 class="header__title">E Keyword Spy</h1>
+          <span class="header__subtitle">Etsy Keyword &amp; Tag Research</span>
         </div>
       </div>
       <div class="header__actions">
-        <button class="icon-btn" id="btn-history" title="Scan History">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M12 8v4l3 3"/>
-            <circle cx="12" cy="12" r="9"/>
+        <button class="icon-btn" id="btn-history" title="Scan History" aria-label="Open scan history">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
           </svg>
         </button>
       </div>
     </header>
 
-    <!-- Connection Banner -->
+    <!-- Connection Status Bar -->
     <div class="connection-bar" id="connection-bar">
-      <span class="status-dot status-dot--idle" id="status-dot"></span>
-      <span class="status-text" id="status-text">Checking Etsy tab…</span>
+      <span class="status-dot status-dot--connected" id="status-dot"></span>
+      <span class="status-text" id="status-text">Checking Etsy tab connection…</span>
     </div>
 
-    <!-- ===== VIEW: INPUT ===== -->
+    <!-- =====================================================
+         VIEW 1: SETUP & SCAN CONFIGURATION
+         ===================================================== -->
     <section class="view view--active" id="view-input">
-      <div class="input-section">
-        <div class="input-header-row">
-          <label class="label" for="seed-keyword">Seed Keyword(s)</label>
-          <span class="seed-badge" id="seed-badge">1 keyword</span>
+      <!-- Seed Keywords Card -->
+      <div class="card">
+        <div class="card__header">
+          <label class="card__label" for="seed-keyword">Seed Keyword(s)</label>
+          <span class="badge badge--brand" id="seed-badge">1 keyword ready</span>
         </div>
         <textarea
-          class="text-input text-input--multiline"
+          class="form-textarea"
           id="seed-keyword"
           rows="2"
-          placeholder="Type or paste keywords (one per line or comma-separated)"
+          placeholder="e.g. resume template, wedding invitation, printable planner"
           autocomplete="off"
           spellcheck="false"
-        >resume</textarea>
+        >resume template</textarea>
 
-        <!-- Quick Idea Chips for Easy 1-Click Testing -->
-        <div class="preset-row">
-          <span class="preset-label">Quick test:</span>
-          <button type="button" class="preset-chip" data-keyword="resume">📄 Resume</button>
-          <button type="button" class="preset-chip" data-keyword="wall art">🎨 Wall Art</button>
-          <button type="button" class="preset-chip" data-keyword="sticker">🏷️ Sticker</button>
-          <button type="button" class="preset-chip" data-keyword="planner">📅 Planner</button>
+        <!-- Quick Test Chips -->
+        <div class="preset-group">
+          <span class="preset-label">Quick preset:</span>
+          <div class="preset-chips">
+            <button type="button" class="preset-chip" data-keyword="resume template">Resume</button>
+            <button type="button" class="preset-chip" data-keyword="wedding invitation">Wedding</button>
+            <button type="button" class="preset-chip" data-keyword="sticker pack">Sticker</button>
+            <button type="button" class="preset-chip" data-keyword="digital planner">Planner</button>
+          </div>
         </div>
 
-        <p class="input-hint" id="input-error"></p>
+        <p class="form-error" id="input-error"></p>
       </div>
 
-      <fieldset class="mode-fieldset">
-        <legend class="label">Search Direction</legend>
-        <label class="radio-option">
+      <!-- Search Direction Card -->
+      <fieldset class="card mode-fieldset">
+        <legend class="card__label">Search Direction</legend>
+        <label class="radio-row">
           <input type="radio" name="scan-mode" value="both" checked>
-          <span class="radio-label"><strong>Both (Recommended)</strong> — word + A–Z &amp; A–Z + word</span>
+          <span class="radio-text">
+            <strong>Both (Recommended)</strong> — word + A–Z &amp; A–Z + word
+          </span>
         </label>
-        <label class="radio-option">
+        <label class="radio-row">
           <input type="radio" name="scan-mode" value="suffix">
-          <span class="radio-label"><strong>After Word</strong> — resume a, resume b …</span>
+          <span class="radio-text">
+            <strong>After Word</strong> — word a, word b, word c…
+          </span>
         </label>
-        <label class="radio-option">
+        <label class="radio-row">
           <input type="radio" name="scan-mode" value="prefix">
-          <span class="radio-label"><strong>Before Word</strong> — a resume, b resume …</span>
+          <span class="radio-text">
+            <strong>Before Word</strong> — a word, b word, c word…
+          </span>
         </label>
       </fieldset>
 
-      <!-- Test / Bypass Toggle -->
-      <label class="toggle-card" for="test-mode-toggle">
-        <div class="toggle-card__text">
-          <span class="toggle-card__title">⚡ Instant Test Mode</span>
+      <!-- Instant Test Mode Toggle Card -->
+      <label class="card toggle-card" for="test-mode-toggle">
+        <div class="toggle-card__info">
+          <span class="toggle-card__title">Instant Test Mode</span>
           <span class="toggle-card__desc">Bypass live delays to test &amp; verify results instantly</span>
         </div>
-        <input type="checkbox" id="test-mode-toggle" class="toggle-input">
+        <input type="checkbox" id="test-mode-toggle" class="form-checkbox">
       </label>
 
+      <!-- Primary CTA -->
       <button class="btn btn--primary btn--full" id="btn-start">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        Start Alphabet Scan
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span>Start Alphabet Scan</span>
       </button>
 
-      <div class="hint-box">
-        <span class="hint-box__icon">💡</span>
-        <p class="hint-box__text">
-          Types each letter A–Z directly into Etsy's search bar in real time, pulling authentic buyer search terms and filtering out UI clutter.
-        </p>
+      <!-- Informational Helper Box -->
+      <div class="helper-box">
+        <div class="helper-box__content">
+          Automates A–Z queries directly in Etsy's live search bar in real time, capturing high-intent buyer autocomplete suggestions.
+        </div>
       </div>
     </section>
 
-    <!-- ===== VIEW: SCANNING ===== -->
+    <!-- =====================================================
+         VIEW 2: REAL-TIME SCANNING
+         ===================================================== -->
     <section class="view" id="view-scanning">
+      <!-- Scan Header -->
       <div class="scan-header">
         <div>
-          <h2 class="scan-header__title" id="scan-keyword-label">Scanning: "resume"</h2>
-          <span class="scan-header__mode" id="scan-mode-label">Seed 1 of 1 · Both mode</span>
+          <h2 class="scan-header__title" id="scan-keyword-label">Scanning: "resume template"</h2>
+          <span class="scan-header__meta" id="scan-mode-label">Seed 1 of 1 · Both directions</span>
         </div>
-        <button class="btn btn--danger btn--sm" id="btn-cancel">Cancel</button>
-      </div>
-
-      <!-- Progress -->
-      <div class="progress-section">
-        <div class="progress-meta">
-          <span class="label">Progress</span>
-          <span class="progress-counter" id="progress-counter">0 / 52</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" id="progress-fill"></div>
-        </div>
-      </div>
-
-      <!-- Letter Grids -->
-      <div class="letter-section" id="suffix-section">
-        <span class="letter-section__label">After: "<span id="suffix-label">keyword</span> + ?"</span>
-        <div class="letter-grid" id="suffix-grid"></div>
-      </div>
-      <div class="letter-section" id="prefix-section">
-        <span class="letter-section__label">Before: "? + <span id="prefix-label">keyword</span>"</span>
-        <div class="letter-grid" id="prefix-grid"></div>
-      </div>
-
-      <!-- Stats -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <span class="stat-card__value" id="stat-found">0</span>
-          <span class="stat-card__label">Keywords Found</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-card__value" id="stat-query">A</span>
-          <span class="stat-card__label">Current Letter</span>
-        </div>
-      </div>
-
-      <!-- Live Feed -->
-      <div class="live-feed">
-        <span class="label">Live Search Movement</span>
-        <div class="live-feed__list" id="live-feed-list"></div>
-      </div>
-    </section>
-
-    <!-- ===== VIEW: RESULTS ===== -->
-    <section class="view" id="view-results">
-      <div class="results-header">
-        <div>
-          <h2 class="results-header__title" id="results-keyword-label">"resume"</h2>
-          <span class="results-header__meta" id="results-meta">0 keywords found</span>
-        </div>
-        <button class="btn btn--secondary btn--sm" id="btn-results-new" title="New scan">
-          + New Scan
+        <button class="btn btn--danger btn--sm" id="btn-cancel">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          </svg>
+          <span>Stop</span>
         </button>
       </div>
 
-      <!-- Search & Filters -->
-      <div class="results-toolbar">
-        <div class="toolbar-search-row">
-          <input type="search" class="text-input text-input--sm" id="search-results" placeholder="Filter keywords…" style="flex:1;">
-          <select class="text-input text-input--sm seed-select" id="filter-seed" title="Filter by Seed">
+      <div class="scanning-body">
+        <!-- Progress Bar -->
+        <div class="card progress-card">
+          <div class="progress-meta">
+            <span class="card__label">Progress</span>
+            <span class="progress-counter" id="progress-counter">0 / 52 queries</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+        </div>
+
+        <!-- Metrics Grid (3 columns) -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-card__title">KEYWORDS FOUND</span>
+            <span class="metric-card__val" id="stat-found">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-card__title">CURRENT LETTER</span>
+            <span class="metric-card__val" id="stat-query">A</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-card__title">EST. TIME</span>
+            <span class="metric-card__val" id="stat-eta">~3s</span>
+          </div>
+        </div>
+
+        <!-- Letter Grid: After Word -->
+        <div class="card letter-card" id="suffix-section">
+          <span class="card__label letter-card__label">After: "<span id="suffix-label">keyword</span> + ?"</span>
+          <div class="letter-grid" id="suffix-grid"></div>
+        </div>
+
+        <!-- Letter Grid: Before Word -->
+        <div class="card letter-card" id="prefix-section">
+          <span class="card__label letter-card__label">Before: "? + <span id="prefix-label">keyword</span>"</span>
+          <div class="letter-grid" id="prefix-grid"></div>
+        </div>
+
+        <!-- Live Feed -->
+        <div class="card feed-card">
+          <span class="card__label">Live Search Movement</span>
+          <div class="feed-list" id="live-feed-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================
+         VIEW 3: RESULTS & INTERACTIVE TABLE
+         ===================================================== -->
+    <section class="view" id="view-results">
+      <!-- Summary Header -->
+      <div class="results-header">
+        <div>
+          <h2 class="results-header__title" id="results-keyword-label">"resume template"</h2>
+          <span class="results-header__meta" id="results-meta">0 keywords found</span>
+        </div>
+        <button class="btn btn--secondary btn--sm" id="btn-results-new">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span>New Scan</span>
+        </button>
+      </div>
+
+      <!-- Search & Filters Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar__row">
+          <div class="search-input-wrap">
+            <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="search" class="form-input form-input--search" id="search-results" placeholder="Filter keywords…">
+          </div>
+          <select class="form-select seed-select" id="filter-seed" title="Filter by Seed Keyword">
             <option value="all">All Seeds</option>
           </select>
         </div>
-        <div class="tab-bar" id="tab-bar">
-          <button class="tab tab--active" data-filter="all" id="tab-all">All (0)</button>
-          <button class="tab" data-filter="suffix" id="tab-suffix">After (0)</button>
-          <button class="tab" data-filter="prefix" id="tab-prefix">Before (0)</button>
+
+        <!-- Segmented Direction Tabs -->
+        <div class="segmented-tabs" id="tab-bar">
+          <button class="seg-tab seg-tab--active" data-filter="all" id="tab-all">All (0)</button>
+          <button class="seg-tab" data-filter="suffix" id="tab-suffix">After (0)</button>
+          <button class="seg-tab" data-filter="prefix" id="tab-prefix">Before (0)</button>
         </div>
       </div>
 
@@ -186,59 +232,84 @@
         <span class="select-bar__count" id="selected-count">0 selected</span>
       </div>
 
-      <!-- Table -->
-      <div class="results-table-wrap" id="results-table-wrap">
-        <table class="results-table">
+      <!-- Interactive Keyword Table -->
+      <div class="table-wrap" id="results-table-wrap">
+        <table class="data-table">
           <thead>
             <tr>
               <th class="col-check"></th>
               <th class="col-num">#</th>
-              <th class="col-keyword">Keyword</th>
-              <th class="col-tag" title="Etsy tags must be ≤ 20 characters">Tag (≤20)</th>
-              <th class="col-seed">Seed</th>
-              <th class="col-ext" title="Open on Etsy"></th>
+              <th class="col-keyword">KEYWORD</th>
+              <th class="col-tag" title="Etsy listing tags must be ≤ 20 characters">TAG (≤20)</th>
+              <th class="col-seed">SEED</th>
+              <th class="col-link" title="Open search on Etsy"></th>
             </tr>
           </thead>
           <tbody id="results-body"></tbody>
         </table>
       </div>
 
-      <!-- Actions -->
+      <!-- Sticky Action Toolbar -->
       <div class="actions-bar">
-        <button class="btn btn--primary btn--grow" id="btn-csv" title="Download CSV for Excel">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          Download CSV
+        <button class="btn btn--primary btn--grow" id="btn-csv" title="Download CSV for Excel / Sheets">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Download CSV</span>
         </button>
-        <button class="btn btn--secondary" id="btn-copy-tags" title="Copy 13 tags ready for Etsy listing (≤20 chars each)">
-          🏷️ 13 Tags
+        <button class="btn btn--feature" id="btn-copy-tags" title="Extract 13 tags within Etsy's 20-character limit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+          </svg>
+          <span>13 Tags</span>
         </button>
-        <button class="btn btn--secondary" id="btn-copy" title="Copy all selected keywords">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          Copy All
+        <button class="btn btn--secondary" id="btn-copy" title="Copy all selected keywords to clipboard">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>Copy All</span>
         </button>
       </div>
     </section>
 
-    <!-- ===== VIEW: HISTORY ===== -->
+    <!-- =====================================================
+         VIEW 4: SCAN HISTORY DRAWER / MODAL
+         ===================================================== -->
     <section class="view" id="view-history">
       <div class="history-header">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button class="icon-btn" id="btn-history-back" title="Back" style="width:28px;height:28px;">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        <div class="history-header__nav">
+          <button class="icon-btn icon-btn--sm" id="btn-history-back" title="Back to setup">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
           </button>
           <h2 class="history-header__title">Scan History</h2>
         </div>
-        <button class="btn btn--danger btn--sm" id="btn-clear-history">Clear All</button>
+        <button class="btn btn--link-danger btn--sm" id="btn-clear-history">Clear All</button>
       </div>
+
       <div class="history-list" id="history-list"></div>
+
       <div class="history-empty" id="history-empty" style="display:none;">
-        <p>No saved scans yet.</p>
-        <button class="btn btn--primary btn--sm" id="btn-start-first">Start a Scan</button>
+        <div class="history-empty__icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <p class="history-empty__title">No scans saved yet</p>
+        <p class="history-empty__desc">Completed scans will automatically appear here for one-click reload.</p>
+        <button class="btn btn--primary btn--sm" id="btn-start-first">Start First Scan</button>
       </div>
     </section>
 
     <!-- Toast Notification -->
-    <div class="toast" id="toast"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 
   <script src="popup.js" type="module"></script>
