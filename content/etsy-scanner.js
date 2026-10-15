@@ -47,9 +47,9 @@
       input.dataset.origTransition = input.style.transition || '';
     }
 
-    input.style.border = '2px solid #4032C9';
-    input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.22)';
-    input.style.transition = 'all 120ms ease';
+    input.style.border = '1px solid #4032C9';
+    input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.18)';
+    input.style.transition = 'all 0.16s ease';
 
     // Set text value
     input.value = query;
@@ -84,7 +84,8 @@
   }
 
   /**
-   * Shows a floating live status pill on the Etsy page during scanning.
+   * Shows a floating live status dock on the Etsy page during scanning.
+   * Styled according to the White-Light design system.
    * @param {string} text
    */
   function showStatusIndicator(text) {
@@ -96,40 +97,28 @@
         bottom: '24px',
         right: '24px',
         zIndex: '9999999',
-        backgroundColor: '#0F172A',
-        color: '#FFFFFF',
-        padding: '9px 15px',
-        borderRadius: '24px',
+        backgroundColor: '#FFFFFF',
+        color: '#0F172A',
+        padding: '6px 14px 6px 8px',
+        borderRadius: '9999px',
         fontSize: '12px',
         fontWeight: '600',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.35), 0 8px 10px -6px rgba(15, 23, 42, 0.2)',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        WebkitFontSmoothing: 'antialiased',
+        boxShadow: '-2px 4px 12px rgba(15, 23, 42, 0.1)',
         display: 'flex',
         alignItems: 'center',
-        gap: '9px',
+        gap: '8px',
         pointerEvents: 'none',
-        transition: 'all 200ms ease',
-        border: '1px solid rgba(199, 210, 254, 0.35)',
+        transition: 'all 0.16s ease',
+        border: '1px solid #CBD5E1',
       });
       document.body.appendChild(activeIndicator);
     }
     activeIndicator.innerHTML = `
-      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px #818CF8;animation:ekeywordspy-pulse 1s infinite;"></span>
-      <span>${text}</span>
+      <span style="background:#4032C9;color:#FFFFFF;font-weight:700;border-radius:4px;padding:2px 7px;font-size:11px;line-height:14px;letter-spacing:0.02em;">LIVE SCAN</span>
+      <span style="color:#0F172A;font-weight:600;font-size:12px;">${text}</span>
     `;
-
-    // Inject pulse keyframes if not present
-    if (!document.getElementById('ekeywordspy-styles')) {
-      const style = document.createElement('style');
-      style.id = 'ekeywordspy-styles';
-      style.textContent = `
-        @keyframes ekeywordspy-pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.35); opacity: 0.6; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
   }
 
   function hideStatusIndicator() {
