@@ -16,9 +16,60 @@ import {
 let activeAbortController = null;
 let pausedScanParams = null;
 
+/**
+ * Discovers all open Etsy tabs across windows, spaces, and AI browser sidebars.
+ * @returns {Promise<chrome.tabs.Tab[]>}
+ */
+async function getAllEtsyTabs() {
+  try {
+    const allTabs = await chrome.tabs.query({});
+    if (Array.isArray(allTabs) && allTabs.length > 0) {
+      const etsyTabs = allTabs.filter(t => {
+        const u = (t.url || t.pendingUrl || '').toLowerCase();
+        return u.includes('etsy.com');
+      });
+      if (etsyTabs.length > 0) return etsyTabs;
+    }
+  } catch {}
+
+  try {
+    const tabs = await chrome.tabs.query({ url: ['*://*.etsy.com/*', '*://etsy.com/*'] });
+    if (Array.isArray(tabs) && tabs.length > 0) return tabs;
+  } catch {}
+
+  return [];
+}
+
+/**
+ * Ensures the content script is actively injected, initialized, and listening.
+ * @param {number} tabId
+ * @returns {Promise<boolean>}
+ */
+async function ensureContentScriptInjected(tabId) {
+  if (!tabId) return false;
+  try {
+    const ping = await chrome.tabs.sendMessage(tabId, { type: 'ETSY_PING' });
+    if (ping && ping.success) return true;
+  } catch {}
+
+  // Inject content script dynamically into tab
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/etsy-scanner.js'],
+    });
+    await new Promise(r => setTimeout(r, 180));
+    const verify = await chrome.tabs.sendMessage(tabId, { type: 'ETSY_PING' });
+    return Boolean(verify && verify.success);
+  } catch (err) {
+    console.warn('E Keyword Spy: ensureContentScriptInjected warning', err);
+    return false;
+  }
+}
+
 async function findOrCreateEtsyTab(useIncognito = false) {
   try {
-    const tabs = await chrome.tabs.query({ url: ['https://*.etsy.com/*', 'https://etsy.com/*'] });
+    const tabs = await getAllEtsyTabs();
 
     if (useIncognito) {
       const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
@@ -28,14 +79,8 @@ async function findOrCreateEtsyTab(useIncognito = false) {
           if (incognitoTab.windowId) {
             await chrome.windows.update(incognitoTab.windowId, { focused: true });
           }
-          // Ensure content script is active in this tab
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: incognitoTab.id },
-              files: ['content/etsy-scanner.js'],
-            });
-          } catch {}
         } catch {}
+        await ensureContentScriptInjected(incognitoTab.id);
         return incognitoTab;
       }
 
@@ -55,14 +100,8 @@ async function findOrCreateEtsyTab(useIncognito = false) {
         });
         const targetTab = win.tabs?.[0];
         if (targetTab) {
-          // Wait for Etsy page to load in the new incognito window
           await new Promise(r => setTimeout(r, 2600));
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: targetTab.id },
-              files: ['content/etsy-scanner.js'],
-            });
-          } catch {}
+          await ensureContentScriptInjected(targetTab.id);
           return targetTab;
         }
       } else {
@@ -72,11 +111,27 @@ async function findOrCreateEtsyTab(useIncognito = false) {
         });
       }
     } else {
-      const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
-      if (regularTab) return regularTab;
-      const active = tabs.find(t => t.active);
-      if (active) return active;
-      if (tabs.length > 0) return tabs[0];
+      // Standard Tab: Prioritize active Etsy tab, or any open Etsy tab
+      const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito) || tabs[0];
+      if (regularTab) {
+        try {
+          await chrome.tabs.update(regularTab.id, { active: true });
+          if (regularTab.windowId) {
+            await chrome.windows.update(regularTab.windowId, { focused: true });
+          }
+        } catch {}
+        await ensureContentScriptInjected(regularTab.id);
+        return regularTab;
+      }
+
+      // No Etsy tab open at all: Automatically open Etsy in current window!
+      const newTab = await chrome.tabs.create({
+        url: 'https://www.etsy.com',
+        active: true,
+      });
+      await new Promise(r => setTimeout(r, 2400));
+      await ensureContentScriptInjected(newTab.id);
+      return newTab;
     }
   } catch (err) {
     console.warn('E Keyword Spy: findOrCreateEtsyTab warning', err);
@@ -489,10 +544,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           isIncognitoAllowed = false;
         }
 
-        const tabs = await chrome.tabs.query({ url: ['https://*.etsy.com/*', 'https://etsy.com/*'] });
+        const tabs = await getAllEtsyTabs();
         const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
         const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
         const activeTab = incognitoTab || regularTab || tabs[0] || null;
+
+        if (activeTab?.id) {
+          await ensureContentScriptInjected(activeTab.id);
+        }
 
         sendResponse({
           connected: Boolean(activeTab),

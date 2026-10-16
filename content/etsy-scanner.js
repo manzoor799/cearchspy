@@ -22,15 +22,20 @@
    * Finds Etsy's main search input element on the page.
    * @returns {HTMLInputElement|null}
    */
+  /**
+   * Finds Etsy's main search input element on the page.
+   * Supports all variations across desktop, tablet, and responsive headers.
+   * @returns {HTMLInputElement|null}
+   */
   function findSearchInput() {
     return document.querySelector(
-      '#global-enhancements-search-query, input[name="search_query"], input[data-id="search-query"], input[placeholder*="Search for anything"], input[type="search"]'
+      '#global-enhancements-search-query, input[name="search_query"], input[data-id="search-query"], input[placeholder*="Search for anything"], input[type="search"], input[aria-label*="Search"]'
     );
   }
 
   /**
    * Visually types the query into Etsy's search input with live focus and input events.
-   * Uses brand primary (#4032C9) for the active outline.
+   * Uses native prototype value setter so React / Preact internal fiber detects the input change.
    * @param {string} query
    */
   function typeIntoEtsySearchBar(query) {
@@ -47,14 +52,26 @@
       input.dataset.origTransition = input.style.transition || '';
     }
 
-    input.style.border = '1px solid #4032C9';
+    input.style.border = '1.5px solid #4032C9';
     input.style.boxShadow = '0 0 0 3px rgba(64, 50, 201, 0.16)';
     input.style.transition = 'all 0.18s ease';
 
-    // Set text value
-    input.value = query;
+    // Set text value via native prototype descriptor to notify React / Preact
+    try {
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value'
+      )?.set;
+      if (nativeSetter) {
+        nativeSetter.call(input, query);
+      } else {
+        input.value = query;
+      }
+    } catch {
+      input.value = query;
+    }
 
-    // Dispatch DOM events so Etsy's internal listeners detect user input
+    // Dispatch DOM & Synthetic events so Etsy's internal autocomplete listeners fire
     try {
       input.focus();
       input.dispatchEvent(new Event('focus', { bubbles: true }));
@@ -62,10 +79,9 @@
       input.dispatchEvent(new Event('change', { bubbles: true }));
       const lastChar = query.slice(-1);
       input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: lastChar }));
+      input.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true, key: lastChar }));
       input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: lastChar }));
-    } catch {
-      // Event dispatch error fallback
-    }
+    } catch {}
 
     return input;
   }
@@ -92,6 +108,7 @@
     if (!activeIndicator) {
       activeIndicator = document.createElement('div');
       activeIndicator.id = 'ekeywordspy-page-indicator';
+      activeIndicator.setAttribute('data-ekeywordspy-ignore', 'true');
       Object.assign(activeIndicator.style, {
         position: 'fixed',
         bottom: '24px',
@@ -131,32 +148,39 @@
 
   /**
    * Fetches suggestions using Etsy's same-origin session credentials.
-   * Directly queries Etsy's real-time autocomplete index.
+   * Queries multiple internal endpoints to ensure 100% compatibility across AI browsers & Chrome.
    * @param {string} query
    * @returns {Promise<string[]>}
    */
   async function fetchSameOriginSuggest(query) {
-    try {
-      const url = `/search/suggest?q=${encodeURIComponent(query)}&lang=en-US`;
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        credentials: 'same-origin',
-      });
-      if (!res.ok) return [];
-      const data = await res.json();
+    const endpoints = [
+      `/search/suggest?q=${encodeURIComponent(query)}&lang=en-US`,
+      `/suggestions_ajax.php?search_query=${encodeURIComponent(query)}`,
+    ];
 
-      if (Array.isArray(data)) {
-        if (typeof data[0] === 'string') return data;
-        return data.map(item => item?.query || item?.text || '').filter(Boolean);
-      }
-      if (data && typeof data === 'object') {
-        const list = data.results || data.suggestions || data.queries || [];
-        if (Array.isArray(list)) {
-          return list.map(item => (typeof item === 'string' ? item : item?.query || item?.text || '')).filter(Boolean);
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'same-origin',
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+
+        if (Array.isArray(data)) {
+          if (typeof data[0] === 'string') return data;
+          return data.map(item => item?.query || item?.text || '').filter(Boolean);
         }
-      }
-    } catch {
-      // Fallback
+        if (data && typeof data === 'object') {
+          const list = data.results || data.suggestions || data.queries || [];
+          if (Array.isArray(list) && list.length > 0) {
+            return list.map(item => (typeof item === 'string' ? item : item?.query || item?.text || '')).filter(Boolean);
+          }
+        }
+      } catch {}
     }
     return [];
   }
@@ -169,16 +193,17 @@
   function scrapeDropdownDOM() {
     const suggestions = [];
     const container = document.querySelector(
-      '#global-enhancements-search-suggestions, [data-search-suggestions], [data-ui="autocomplete-results"], div[role="listbox"], ul[role="listbox"]'
+      '#global-enhancements-search-suggestions, [data-search-suggestions], [data-ui="autocomplete-results"], div[role="listbox"], ul[role="listbox"], .search-suggestions-list'
     );
     if (!container) return suggestions;
 
-    const items = container.querySelectorAll('li, div[role="option"], [data-suggestion]');
+    const items = container.querySelectorAll('li, div[role="option"], [data-suggestion], [data-query]');
     for (const item of items) {
       // Skip trending items with thumbnails (under "Top searches this week")
       if (item.querySelector('img')) continue;
 
-      const text = item.textContent || '';
+      const dataQuery = item.getAttribute('data-query') || item.getAttribute('data-suggestion');
+      const text = dataQuery || item.textContent || '';
       const clean = text.replace(/\s+/g, ' ').trim();
       if (clean && !clean.toLowerCase().includes('find shop names')) {
         suggestions.push(clean);
@@ -189,43 +214,42 @@
   }
 
   /**
-   * Detects whether Etsy or DataDome has displayed a CAPTCHA / slider verification challenge.
+   * Detects whether Etsy or DataDome has displayed a genuine CAPTCHA / slider verification challenge.
+   * Prevents false positives when Etsy's homepage and search bar are healthy.
    * @returns {boolean}
    */
   function isVerificationChallengePresent() {
     try {
       const url = window.location.href || '';
       const title = document.title || '';
-      const bodyText = document.body ? document.body.innerText || '' : '';
 
-      // 1. Check URL query & hash
-      if (url.includes('dd_referrer') || url.includes('datadome') || url.includes('captcha-delivery.com')) {
+      // 1. Check URL query & hash for explicit DataDome challenge redirect
+      if (url.includes('dd_referrer=') || url.includes('captcha-delivery.com') || url.includes('datadome.co')) {
         return true;
       }
 
-      // 2. Check document title
-      const lowerTitle = title.toLowerCase();
-      if (
-        lowerTitle.includes('verification required') ||
-        lowerTitle.includes('robot or human') ||
-        lowerTitle.includes('security check') ||
-        lowerTitle.includes('access denied') ||
-        lowerTitle.includes('datadome')
-      ) {
-        return true;
-      }
-
-      // 3. Check for DataDome iframe or elements
+      // 2. Check for active DataDome challenge iframe in DOM
       const captchaIframe = document.querySelector(
-        'iframe[src*="captcha-delivery.com"], iframe[src*="datadome"], [data-dd-captcha], #dd-captcha, .datadome-slider, #captcha-box'
+        'iframe[src*="captcha-delivery.com"], iframe[src*="datadome"], iframe[title*="DataDome"], iframe[title*="Captcha"]'
       );
       if (captchaIframe) return true;
 
-      // 4. Check for challenge slider text in DOM
+      // 3. Check for specific DataDome slider container
+      const sliderBox = document.querySelector('.datadome-slider, #dd-captcha, [data-dd-captcha], #captcha-box');
+      if (sliderBox && sliderBox.offsetHeight > 0) return true;
+
+      // 4. If Etsy's genuine search bar is present and accessible, page is healthy!
+      const searchInput = findSearchInput();
+      if (searchInput) {
+        return false;
+      }
+
+      // 5. If NO search bar exists, check if title indicates a bot block
+      const lowerTitle = title.toLowerCase();
       if (
-        bodyText.includes('Slide right to secure your access') ||
-        bodyText.includes('Slide right to continue') ||
-        (bodyText.includes('Verification Required') && bodyText.includes('Etsy'))
+        lowerTitle.includes('robot or human') ||
+        lowerTitle.includes('datadome') ||
+        (lowerTitle.includes('verification required') && !lowerTitle.includes('shop'))
       ) {
         return true;
       }
