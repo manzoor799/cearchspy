@@ -15,6 +15,8 @@ import {
 
 let activeAbortController = null;
 let pausedScanParams = null;
+let isScanRunning = false;
+let isRecovering = false;
 
 /**
  * Discovers all open Etsy tabs across windows, spaces, and AI browser sidebars.
@@ -175,6 +177,7 @@ async function handleStartScan({
   round2Limit = 5,
   initialResults = [],
   rootSeed = '',
+  resumeFromStep = 0,
 }) {
   if (activeAbortController) {
     activeAbortController.abort();
@@ -183,6 +186,7 @@ async function handleStartScan({
 
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;
+  isScanRunning = true;
 
   const settings = await getSettings();
   const effectiveTestMode = testMode || settings.testMode;
@@ -192,13 +196,33 @@ async function handleStartScan({
 
   const seedList = parseSeedKeywords(keywords || keyword);
   if (seedList.length === 0) {
+    isScanRunning = false;
     broadcast({ type: 'SCAN_ERROR', error: 'No valid seed keywords provided' });
     return;
   }
 
+  // Schedule a persistent watchdog alarm to survive service worker suspension during sleep/lock
+  try {
+    chrome.alarms.create('scan_watchdog', { periodInMinutes: 0.5 });
+  } catch {}
+
   const scanId = isRound2 ? `scan_r2_${Date.now()}` : `scan_${Date.now()}`;
   const branchMultiplier = deepExpansion ? (branchLimit === 'all' ? 4 : (Number(branchLimit) + 1)) : 1;
   const totalQueries = seedList.length * (mode === 'both' ? 52 : 26) * branchMultiplier;
+
+  const scanParams = {
+    keywords: seedList,
+    mode,
+    testMode: effectiveTestMode,
+    deepExpansion,
+    branchLimit,
+    isRound2,
+    round2Expansion: effectiveRound2Expansion,
+    round2Limit: effectiveRound2Limit,
+    rootSeed: rootSeed || seedList[0],
+    useIncognito,
+    delayMs: settings.delayMs,
+  };
 
   const scanState = {
     id: scanId,
@@ -219,12 +243,14 @@ async function handleStartScan({
     rootSeed: rootSeed || seedList[0],
     currentRound: isRound2 ? 2 : 1,
     status: 'running',
-    currentStep: 0,
+    currentStep: resumeFromStep || 0,
     totalSteps: totalQueries,
     currentLetter: deepExpansion ? 'AUTO' : 'A',
     currentType: mode === 'prefix' ? 'prefix' : 'suffix',
     results: Array.isArray(initialResults) ? [...initialResults] : [],
     startTime: Date.now(),
+    lastHeartbeat: Date.now(),
+    scanParams,
   };
 
   await setCurrentScan(scanState);
@@ -246,6 +272,7 @@ async function handleStartScan({
       rootSeed: scanState.rootSeed,
       etsyTabId: etsyTab?.id || null,
       signal,
+      resumeFromStep,
       onProgress: async (progress) => {
         scanState.currentStep = progress.overallStep;
         scanState.totalSteps = progress.totalOverallSteps;
@@ -260,6 +287,7 @@ async function handleStartScan({
         scanState.currentType = progress.type;
         scanState.statusMessage = progress.statusMessage || '';
         scanState.currentRound = progress.currentRound || progress.round || (isRound2 ? 2 : 1);
+        scanState.lastHeartbeat = Date.now();
 
         if (progress.newResults && progress.newResults.length > 0) {
           scanState.results.push(...progress.newResults);
@@ -303,6 +331,10 @@ async function handleStartScan({
     await saveScanToHistory(scanState);
     await setBadge(String(results.length), '#15803D');
 
+    try {
+      await chrome.alarms.clear('scan_watchdog');
+    } catch {}
+
     if (etsyTab?.id) {
       chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
     }
@@ -315,22 +347,15 @@ async function handleStartScan({
       scanState.status = 'paused_captcha';
       scanState.captchaMessage = error.message;
       scanState.captchaTime = Date.now();
+      scanState.lastHeartbeat = Date.now();
       scanState.tabId = etsyTab?.id || null;
 
       // Retain paused scan parameters for 1-click seamless resume
       pausedScanParams = {
         payload: {
-          keywords: seedList,
-          mode,
-          testMode: effectiveTestMode,
-          deepExpansion,
-          branchLimit,
-          isRound2,
-          round2Expansion: effectiveRound2Expansion,
-          round2Limit: effectiveRound2Limit,
+          ...scanParams,
           initialResults: scanState.results, // Retain ALL keywords found so far!
-          rootSeed: scanState.rootSeed,
-          useIncognito,
+          resumeFromStep: scanState.currentStep,
         },
         tabId: etsyTab?.id || null,
       };
@@ -357,6 +382,10 @@ async function handleStartScan({
       return;
     }
 
+    try {
+      await chrome.alarms.clear('scan_watchdog');
+    } catch {}
+
     if (etsyTab?.id) {
       chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
     }
@@ -376,6 +405,7 @@ async function handleStartScan({
       broadcast({ type: 'SCAN_ERROR', error: error.message });
     }
   } finally {
+    isScanRunning = false;
     activeAbortController = null;
   }
 }
@@ -385,6 +415,10 @@ async function handleCancelScan() {
     activeAbortController.abort();
     activeAbortController = null;
   }
+  isScanRunning = false;
+  try {
+    await chrome.alarms.clear('scan_watchdog');
+  } catch {}
 
   pausedScanParams = null;
   const etsyTab = await findEtsyTab();
@@ -402,38 +436,41 @@ async function handleCancelScan() {
   broadcast({ type: 'SCAN_CANCELLED' });
 }
 
-async function handleResumeScan(overrideTestMode = false) {
+async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0) {
   const current = await getCurrentScan();
   if (!current || (current.status !== 'paused_captcha' && current.status !== 'running')) {
-    return { success: false, message: 'No paused scan to resume' };
+    return { success: false, message: 'No paused or active scan to resume' };
   }
 
+  const effectiveStep = resumeFromStep || current.currentStep || 0;
   const tabId = pausedScanParams?.tabId || current.tabId;
+  const savedParams = current.scanParams || pausedScanParams?.payload || {};
 
   // If overrideTestMode is requested, resume with testMode immediately
   if (overrideTestMode) {
-    const payload = pausedScanParams?.payload || {
+    const payload = {
       keywords: current.seedList || [current.keyword],
-      mode: current.mode || 'both',
+      mode: savedParams.mode || current.mode || 'both',
       testMode: true,
-      deepExpansion: current.deepExpansion !== false,
-      branchLimit: current.branchLimit || 3,
-      isRound2: Boolean(current.isRound2),
-      round2Expansion: current.round2Expansion !== false,
-      round2Limit: current.round2Limit || 5,
+      deepExpansion: savedParams.deepExpansion !== undefined ? savedParams.deepExpansion : (current.deepExpansion !== false),
+      branchLimit: savedParams.branchLimit || current.branchLimit || 3,
+      isRound2: Boolean(savedParams.isRound2 || current.isRound2),
+      round2Expansion: savedParams.round2Expansion !== undefined ? savedParams.round2Expansion : (current.round2Expansion !== false),
+      round2Limit: savedParams.round2Limit || current.round2Limit || 5,
       initialResults: current.results || [],
-      rootSeed: current.rootSeed || current.keyword,
+      rootSeed: savedParams.rootSeed || current.rootSeed || current.keyword,
       useIncognito: false,
+      resumeFromStep: effectiveStep,
     };
-    payload.testMode = true;
     current.status = 'running';
+    current.lastHeartbeat = Date.now();
     await setCurrentScan(current);
     handleStartScan(payload);
     return { success: true, testMode: true };
   }
 
-  // Check if Etsy tab has resolved the slider
-  if (tabId) {
+  // Check if Etsy tab has resolved the slider (only if was paused_captcha)
+  if (current.status === 'paused_captcha' && tabId) {
     try {
       const verif = await chrome.tabs.sendMessage(tabId, { type: 'CHECK_VERIFICATION_RESOLVED' });
       if (verif && !verif.resolved) {
@@ -448,24 +485,63 @@ async function handleResumeScan(overrideTestMode = false) {
     }
   }
 
-  const payload = pausedScanParams?.payload || {
+  const payload = {
     keywords: current.seedList || [current.keyword],
-    mode: current.mode || 'both',
-    testMode: false,
-    deepExpansion: current.deepExpansion !== false,
-    branchLimit: current.branchLimit || 3,
-    isRound2: Boolean(current.isRound2),
-    round2Expansion: current.round2Expansion !== false,
-    round2Limit: current.round2Limit || 5,
+    mode: savedParams.mode || current.mode || 'both',
+    testMode: savedParams.testMode || current.testMode || false,
+    deepExpansion: savedParams.deepExpansion !== undefined ? savedParams.deepExpansion : (current.deepExpansion !== false),
+    branchLimit: savedParams.branchLimit || current.branchLimit || 3,
+    isRound2: Boolean(savedParams.isRound2 || current.isRound2),
+    round2Expansion: savedParams.round2Expansion !== undefined ? savedParams.round2Expansion : (current.round2Expansion !== false),
+    round2Limit: savedParams.round2Limit || current.round2Limit || 5,
     initialResults: current.results || [],
-    rootSeed: current.rootSeed || current.keyword,
-    useIncognito: current.useIncognito || false,
+    rootSeed: savedParams.rootSeed || current.rootSeed || current.keyword,
+    useIncognito: savedParams.useIncognito !== undefined ? savedParams.useIncognito : (current.useIncognito || false),
+    resumeFromStep: effectiveStep,
   };
 
   current.status = 'running';
+  current.lastHeartbeat = Date.now();
   await setCurrentScan(current);
   handleStartScan(payload);
   return { success: true };
+}
+
+/**
+ * Watchdog recovery function: Inspects active scan state. If service worker died, was
+ * suspended during sleep/lock, or in-flight loop hung >12 seconds, automatically revives
+ * the scan from the exact current step without losing any collected keywords.
+ * @param {boolean} [forceRevive]
+ */
+async function checkAndRecoverStalledScan(forceRevive = false) {
+  if (isRecovering) return;
+  try {
+    const current = await getCurrentScan();
+    if (!current || current.status !== 'running') return;
+
+    const now = Date.now();
+    const lastBeat = current.lastHeartbeat || current.startTime || 0;
+    const idleMs = now - lastBeat;
+
+    // If an in-memory scan is actively executing and has beaten within 12 seconds, it is healthy!
+    if (isScanRunning && activeAbortController && !forceRevive) {
+      if (idleMs < 12000) return;
+    }
+
+    console.log(`[E Keyword Spy Watchdog] Recovering stalled scan at step ${current.currentStep}/${current.totalSteps} (idle ${Math.round(idleMs / 1000)}s)...`);
+    isRecovering = true;
+
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch {}
+      activeAbortController = null;
+    }
+
+    await handleResumeScan(false, current.currentStep || 0);
+  } catch (err) {
+    console.warn('[E Keyword Spy Watchdog] Error recovering scan:', err);
+  } finally {
+    isRecovering = false;
+  }
 }
 
 // Runtime Message Router
@@ -594,9 +670,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+    case 'PING_OR_RESUME_SCAN': {
+      (async () => {
+        await checkAndRecoverStalledScan();
+        sendResponse({ success: true, isRunning: isScanRunning });
+      })();
+      return true;
+    }
+
+    case 'KICKSTART_SCAN': {
+      (async () => {
+        await checkAndRecoverStalledScan(true);
+        sendResponse({ success: true, isRunning: isScanRunning });
+      })();
+      return true;
+    }
+
     default:
       return false;
   }
+});
+
+// Watchdog Alarm Listener (fires periodically to survive Mac App Nap & Service Worker idle timeouts)
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'scan_watchdog') {
+    checkAndRecoverStalledScan();
+  }
+});
+
+// Profile / Browser Startup Listener
+chrome.runtime.onStartup.addListener(() => {
+  checkAndRecoverStalledScan();
 });
 
 chrome.runtime.onInstalled.addListener(async () => {

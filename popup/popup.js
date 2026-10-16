@@ -37,6 +37,8 @@ let selectedBranchLimit = '3';
 let selectedRound2Limit = '5';
 let selectedPacingMode = 'safe';
 let selectedPacingDelay = 380;
+let lastProgressTimestamp = Date.now();
+let lastObservedStep = 0;
 
 // Views
 const views = {
@@ -268,6 +270,11 @@ async function rehydrateState() {
     if (current.status === 'running' || current.status === 'paused_captcha') {
       setupScanningView(current);
       switchView('scanning');
+      if (current.status === 'running') {
+        lastProgressTimestamp = Date.now();
+        lastObservedStep = current.currentStep || 0;
+        chrome.runtime.sendMessage({ type: 'PING_OR_RESUME_SCAN' }).catch(() => {});
+      }
     } else if (current.status === 'completed' && current.results?.length > 0) {
       displayResults(current);
       switchView('results');
@@ -392,6 +399,13 @@ function renderLetterGrid(container, activeLetter, isThisTypeActive) {
 }
 
 function updateScanningProgress(progress) {
+  if (progress && progress.overallStep !== undefined) {
+    if (progress.overallStep !== lastObservedStep) {
+      lastObservedStep = progress.overallStep;
+      lastProgressTimestamp = Date.now();
+    }
+  }
+
   const percent = progress.totalOverallSteps > 0
     ? Math.min(100, Math.round((progress.overallStep / progress.totalOverallSteps) * 100))
     : 0;
@@ -1128,6 +1142,10 @@ function bindEvents() {
           switchView('input');
         }
       } else if (next.status === 'running' || next.status === 'paused_captcha') {
+        if (next.status === 'running') {
+          lastProgressTimestamp = Date.now();
+          if (next.currentStep !== undefined) lastObservedStep = next.currentStep;
+        }
         if (!views.scanning.classList.contains('view--active')) {
           setupScanningView(next);
           switchView('scanning');
@@ -1138,6 +1156,19 @@ function bindEvents() {
       }
     }
   });
+
+  // Watchdog interval: if scanning view is active and stalled >8s, kickstart service worker
+  setInterval(async () => {
+    if (views.scanning && views.scanning.classList.contains('view--active') && activeScanData?.status === 'running') {
+      const elapsed = Date.now() - lastProgressTimestamp;
+      if (elapsed > 8000) {
+        try {
+          await chrome.runtime.sendMessage({ type: 'PING_OR_RESUME_SCAN' });
+          lastProgressTimestamp = Date.now();
+        } catch {}
+      }
+    }
+  }, 4000);
 }
 
 async function handleStartScanClick() {

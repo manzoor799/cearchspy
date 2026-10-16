@@ -160,12 +160,17 @@
 
     for (const url of endpoints) {
       try {
+        const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(3500)
+          : undefined;
+
         const res = await fetch(url, {
           headers: {
             Accept: 'application/json, text/javascript, */*; q=0.01',
             'X-Requested-With': 'XMLHttpRequest',
           },
           credentials: 'same-origin',
+          signal,
         });
         if (!res.ok) continue;
         const data = await res.json();
@@ -331,51 +336,55 @@
       }
 
       (async () => {
-        const query = message.query;
-        const seedIndex = message.seedIndex || 1;
-        const totalSeeds = message.totalSeeds || 1;
-        const isRootProbe = Boolean(message.isRootProbe);
-        const branchIndex = message.branchIndex || seedIndex;
-        const totalBranches = message.totalBranches || totalSeeds;
+        try {
+          const query = message.query;
+          const seedIndex = message.seedIndex || 1;
+          const totalSeeds = message.totalSeeds || 1;
+          const isRootProbe = Boolean(message.isRootProbe);
+          const branchIndex = message.branchIndex || seedIndex;
+          const totalBranches = message.totalBranches || totalSeeds;
 
-        // 1. Physically type into Etsy's search bar with live movement
-        typeIntoEtsySearchBar(query);
+          // 1. Physically type into Etsy's search bar with live movement
+          typeIntoEtsySearchBar(query);
 
-        // 2. Update HUD overlay based on scan phase
-        if (isRootProbe) {
-          showStatusIndicator(`Auto-Suggest Harvest: "${query}"`);
-          // Allow Etsy's live autocomplete dropdown to fully appear
-          await new Promise(r => setTimeout(r, message.pacingDelayMs || 1500));
-        } else {
-          const branchText = totalBranches > 1 ? ` (Branch ${branchIndex}/${totalBranches})` : '';
-          showStatusIndicator(`E Keyword Spy: "${query}"${branchText}`);
-          if (message.typingDelayMs) {
-            await new Promise(r => setTimeout(r, message.typingDelayMs));
+          // 2. Update HUD overlay based on scan phase
+          if (isRootProbe) {
+            showStatusIndicator(`Auto-Suggest Harvest: "${query}"`);
+            // Allow Etsy's live autocomplete dropdown to fully appear
+            await new Promise(r => setTimeout(r, message.pacingDelayMs || 1500));
+          } else {
+            const branchText = totalBranches > 1 ? ` (Branch ${branchIndex}/${totalBranches})` : '';
+            showStatusIndicator(`E Keyword Spy: "${query}"${branchText}`);
+            if (message.typingDelayMs) {
+              await new Promise(r => setTimeout(r, message.typingDelayMs));
+            }
           }
+
+          // Check again after typing in case challenge was triggered
+          if (isVerificationChallengePresent()) {
+            showCaptchaPausedIndicator();
+            sendResponse({
+              success: false,
+              captchaDetected: true,
+              url: window.location.href,
+            });
+            return;
+          }
+
+          // 3. Extract real-time suggestions from Etsy same-origin API
+          let suggestions = await fetchSameOriginSuggest(query);
+
+          // 4. Also check live dropdown DOM to combine
+          const domSuggestions = scrapeDropdownDOM();
+          if (Array.isArray(domSuggestions) && domSuggestions.length > 0) {
+            const combined = [...(suggestions || []), ...domSuggestions];
+            suggestions = [...new Set(combined)];
+          }
+
+          sendResponse({ success: true, suggestions: suggestions || [] });
+        } catch (err) {
+          sendResponse({ success: false, suggestions: [], error: err?.message || 'Probe error' });
         }
-
-        // Check again after typing in case challenge was triggered
-        if (isVerificationChallengePresent()) {
-          showCaptchaPausedIndicator();
-          sendResponse({
-            success: false,
-            captchaDetected: true,
-            url: window.location.href,
-          });
-          return;
-        }
-
-        // 3. Extract real-time suggestions from Etsy same-origin API
-        let suggestions = await fetchSameOriginSuggest(query);
-
-        // 4. Also check live dropdown DOM to combine
-        const domSuggestions = scrapeDropdownDOM();
-        if (Array.isArray(domSuggestions) && domSuggestions.length > 0) {
-          const combined = [...(suggestions || []), ...domSuggestions];
-          suggestions = [...new Set(combined)];
-        }
-
-        sendResponse({ success: true, suggestions: suggestions || [] });
       })();
       return true; // Keep channel open for async response
     }
