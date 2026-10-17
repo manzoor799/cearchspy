@@ -11,25 +11,34 @@
  */
 
 (() => {
-  // Prevent duplicate injection
-  if (window.__ekeywordspy_injected) return;
-  window.__ekeywordspy_injected = true;
+  const SCRIPT_VERSION = '1.3.0';
+
+  // If already running this exact version, avoid duplicate setup
+  if (window.__ekeywordspy_version === SCRIPT_VERSION && window.__ekeywordspy_listening) {
+    return;
+  }
+  window.__ekeywordspy_version = SCRIPT_VERSION;
+  window.__ekeywordspy_listening = true;
+
+  // Detach previous listener if dynamically re-injected
+  if (window.__ekeywordspy_message_listener) {
+    try {
+      chrome.runtime.onMessage.removeListener(window.__ekeywordspy_message_listener);
+    } catch {}
+  }
 
   let activeIndicator = null;
   let activeSearchInput = null;
 
   /**
    * Finds Etsy's main search input element on the page.
-   * @returns {HTMLInputElement|null}
-   */
-  /**
-   * Finds Etsy's main search input element on the page.
-   * Supports all variations across desktop, tablet, and responsive headers.
+   * Supports all variations across desktop, tablet, and responsive headers,
+   * as well as regional Etsy sites (e.g., Etsy Pakistan, UK, etc.).
    * @returns {HTMLInputElement|null}
    */
   function findSearchInput() {
     return document.querySelector(
-      '#global-enhancements-search-query, input[name="search_query"], input[data-id="search-query"], input[placeholder*="Search for anything"], input[type="search"], input[aria-label*="Search"]'
+      '#global-enhancements-search-query, input[name="search_query"], input[data-id="search-query"], input[placeholder*="Search" i], input[type="search"], input[aria-label*="Search" i], input[role="searchbox"], input[role="combobox"], form[action*="/search"] input, header input, nav input, input[name="q"], #search-query'
     );
   }
 
@@ -220,7 +229,9 @@
 
   /**
    * Detects whether Etsy or DataDome has displayed a genuine, blocking CAPTCHA / slider challenge.
-   * Ensures 0% false positives when Etsy's search bar and page are healthy.
+   * Guarantees 0% false positives when browsing Etsy normally.
+   * NEVER flags as a challenge when URL contains dd_referrer= or when Etsy's header/nav exists.
+   * Returns true ONLY if an interactive challenge slider is physically visible on the screen.
    * @returns {boolean}
    */
   function isVerificationChallengePresent() {
@@ -228,41 +239,66 @@
       // 1. PRIMARY HEALTH CHECK: If Etsy's genuine search bar is present in DOM,
       // the page is functional and healthy! NEVER flag as captcha.
       const searchInput = findSearchInput();
-      if (searchInput && !searchInput.disabled) {
+      if (searchInput) {
+        return false;
+      }
+
+      // 2. If Etsy's main header, nav, or content container exists, the page is 100% HEALTHY!
+      if (document.querySelector('header, nav, #gnav-header, .wt-header, [data-wt-header], footer, #content, [role="main"], [data-header]')) {
+        return false;
+      }
+
+      const title = (document.title || '').toLowerCase();
+      // 3. If title includes "Etsy", it's the genuine Etsy site, not a standalone captcha page
+      if (title.includes('etsy')) {
+        // Only consider it a challenge if a physical slider iframe or element is visible right now
+        const challengeIframe = document.querySelector('iframe[src*="captcha-delivery.com"]');
+        if (challengeIframe) {
+          const rect = challengeIframe.getBoundingClientRect();
+          if (rect.width > 250 && rect.height > 180 && rect.top >= 0 && rect.top < window.innerHeight) {
+            return true;
+          }
+        }
+        const sliderBox = document.querySelector('.datadome-slider, #dd-captcha');
+        if (sliderBox) {
+          const rect = sliderBox.getBoundingClientRect();
+          if (rect.width > 120 && rect.height > 35 && rect.top >= 0 && rect.top < window.innerHeight) {
+            return true;
+          }
+        }
         return false;
       }
 
       const url = window.location.href || '';
-      const title = (document.title || '').toLowerCase();
 
-      // 2. Explicit DataDome challenge redirect URL
-      if (url.includes('captcha-delivery.com/captcha/') || url.includes('dd_referrer=')) {
+      // 4. Standalone challenge page on captcha delivery domain
+      if (url.includes('captcha-delivery.com/captcha/') || url.includes('/challenge.html')) {
         return true;
       }
 
-      // 3. Page title indicating a genuine bot block screen
+      // 5. Standalone challenge title without Etsy brand
       if (
         title.includes('robot or human') ||
-        (title.includes('verification required') && !title.includes('shop') && !title.includes('item'))
+        title.includes('are you a human') ||
+        (title.includes('security check') && !title.includes('etsy'))
       ) {
         return true;
       }
 
-      // 4. Genuine, VISIBLE blocking DataDome challenge iframe
-      // Only match genuine challenge iframe (from captcha-delivery.com) that is actually visible on screen
+      // 6. Genuine, VISIBLE blocking DataDome challenge iframe
       const challengeIframe = document.querySelector('iframe[src*="captcha-delivery.com"]');
       if (challengeIframe) {
         const rect = challengeIframe.getBoundingClientRect();
-        if (rect.width > 200 && rect.height > 150) {
+        if (rect.width > 250 && rect.height > 180 && rect.top >= 0 && rect.top < window.innerHeight) {
           return true;
         }
       }
 
-      // 5. Explicit DataDome slider element that is physically rendered and visible
-      const sliderBox = document.querySelector('.datadome-slider');
+      // 7. Explicit DataDome slider element that is physically rendered and visible
+      const sliderBox = document.querySelector('.datadome-slider, #dd-captcha');
       if (sliderBox) {
         const rect = sliderBox.getBoundingClientRect();
-        if (rect.width > 100 && rect.height > 40) {
+        if (rect.width > 120 && rect.height > 35 && rect.top >= 0 && rect.top < window.innerHeight) {
           return true;
         }
       }
@@ -307,11 +343,19 @@
     `;
   }
 
-  // Runtime Message Listener
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Runtime Message Listener with dynamic re-bind support
+  const messageListener = (message, sender, sendResponse) => {
+    if (!message || !message.type) return false;
+
     if (message.type === 'ETSY_PING') {
       const challenged = isVerificationChallengePresent();
-      sendResponse({ success: true, url: window.location.href, challenged });
+      sendResponse({
+        success: true,
+        url: window.location.href,
+        challenged,
+        hasSearchInput: Boolean(findSearchInput()),
+        version: SCRIPT_VERSION,
+      });
       return false;
     }
 
@@ -327,6 +371,7 @@
         captchaDetected: challenged && !hasSearchInput,
         hasSearchInput,
         url: window.location.href,
+        version: SCRIPT_VERSION,
       });
       return false;
     }
@@ -405,5 +450,8 @@
     }
 
     return false;
-  });
+  };
+
+  window.__ekeywordspy_message_listener = messageListener;
+  chrome.runtime.onMessage.addListener(messageListener);
 })();

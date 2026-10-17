@@ -42,17 +42,23 @@ async function getAllEtsyTabs() {
   return [];
 }
 
+const SCRIPT_VERSION = '1.3.0';
+
 /**
  * Ensures the content script is actively injected, initialized, and listening.
+ * Automatically verifies version so that existing open tabs get upgraded dynamically.
  * @param {number} tabId
+ * @param {boolean} [force]
  * @returns {Promise<boolean>}
  */
-async function ensureContentScriptInjected(tabId) {
+async function ensureContentScriptInjected(tabId, force = false) {
   if (!tabId) return false;
-  try {
-    const ping = await chrome.tabs.sendMessage(tabId, { type: 'ETSY_PING' });
-    if (ping && ping.success) return true;
-  } catch {}
+  if (!force) {
+    try {
+      const ping = await chrome.tabs.sendMessage(tabId, { type: 'ETSY_PING' });
+      if (ping && ping.success && ping.version === SCRIPT_VERSION) return true;
+    } catch {}
+  }
 
   // Inject content script dynamically into tab
   try {
@@ -60,7 +66,7 @@ async function ensureContentScriptInjected(tabId) {
       target: { tabId },
       files: ['content/etsy-scanner.js'],
     });
-    await new Promise(r => setTimeout(r, 180));
+    await new Promise(r => setTimeout(r, 200));
     const verify = await chrome.tabs.sendMessage(tabId, { type: 'ETSY_PING' });
     return Boolean(verify && verify.success);
   } catch (err) {
@@ -353,7 +359,7 @@ async function handleStartScan({
     pausedScanParams = null;
     broadcast({ type: 'SCAN_COMPLETED', scan: scanState });
   } catch (error) {
-    if (error.name === 'CaptchaError' || error instanceof CaptchaError || error.message?.includes('verification challenge') || error.message?.includes('403')) {
+    if (error.name === 'CaptchaError' || error instanceof CaptchaError || error.message?.includes('verification challenge')) {
       console.warn('E Keyword Spy: Scan paused due to Etsy verification challenge:', error);
       scanState.status = 'paused_captcha';
       scanState.captchaMessage = error.message;
@@ -481,7 +487,14 @@ async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0, fo
   }
 
   // Check if Etsy tab has resolved the slider (only if was paused_captcha AND not a forced user resume)
-  if (!forceResume && current.status === 'paused_captcha' && tabId) {
+  if (forceResume) {
+    await setBadge('...', '#4032C9');
+    if (tabId) {
+      try {
+        await ensureContentScriptInjected(tabId, true);
+      } catch {}
+    }
+  } else if (current.status === 'paused_captcha' && tabId) {
     try {
       const verif = await chrome.tabs.sendMessage(tabId, { type: 'CHECK_VERIFICATION_RESOLVED' });
       // Only block if definitely still challenged AND no valid search input is accessible
