@@ -937,7 +937,12 @@ function bindEvents() {
   // Cancel Scan CTA
   if (elements.btnCancel) {
     elements.btnCancel.addEventListener('click', async () => {
-      await chrome.runtime.sendMessage({ type: 'CANCEL_SCAN' });
+      activeScanData = null;
+      switchView('input');
+      showToast('Scan stopped');
+      try {
+        await chrome.runtime.sendMessage({ type: 'CANCEL_SCAN' });
+      } catch {}
     });
   }
 
@@ -1161,18 +1166,23 @@ function bindEvents() {
     }
   });
 
-  // Watchdog interval: if scanning view is active and stalled >8s, kickstart service worker
+  // Health check: sync scan status with background worker without auto-restarting
   setInterval(async () => {
     if (views.scanning && views.scanning.classList.contains('view--active') && activeScanData?.status === 'running') {
-      const elapsed = Date.now() - lastProgressTimestamp;
-      if (elapsed > 8000) {
-        try {
-          await chrome.runtime.sendMessage({ type: 'PING_OR_RESUME_SCAN' });
-          lastProgressTimestamp = Date.now();
-        } catch {}
-      }
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'GET_CURRENT_STATUS' });
+        if (res?.currentScan) {
+          if (res.currentScan.status === 'cancelled') {
+            activeScanData = null;
+            switchView('input');
+          } else if (res.currentScan.status === 'completed') {
+            displayResults(res.currentScan);
+            switchView('results');
+          }
+        }
+      } catch {}
     }
-  }, 4000);
+  }, 5000);
 }
 
 async function handleStartScanClick() {

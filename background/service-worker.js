@@ -291,6 +291,9 @@ async function handleStartScan({
       signal,
       resumeFromStep,
       onProgress: async (progress) => {
+        if (!isScanRunning || signal.aborted || scanState.status === 'cancelled') {
+          return;
+        }
         scanState.currentStep = progress.overallStep;
         scanState.totalSteps = progress.totalOverallSteps;
         scanState.currentSeed = progress.currentSeed;
@@ -428,25 +431,29 @@ async function handleStartScan({
 }
 
 async function handleCancelScan() {
+  isScanRunning = false;
+  isRecovering = false;
   if (activeAbortController) {
-    activeAbortController.abort();
+    try { activeAbortController.abort(); } catch {}
     activeAbortController = null;
   }
-  isScanRunning = false;
   try {
     await chrome.alarms.clear('scan_watchdog');
   } catch {}
 
   pausedScanParams = null;
+
+  // Immediately persist cancelled status so nothing can overwrite it
+  const current = await getCurrentScan();
+  if (current) {
+    current.status = 'cancelled';
+    current.lastHeartbeat = Date.now();
+    await setCurrentScan(current);
+  }
+
   const etsyTab = await findEtsyTab();
   if (etsyTab?.id) {
     chrome.tabs.sendMessage(etsyTab.id, { type: 'ETSY_SCAN_COMPLETE' }).catch(() => {});
-  }
-
-  const current = await getCurrentScan();
-  if (current && (current.status === 'running' || current.status === 'paused_captcha')) {
-    current.status = 'cancelled';
-    await setCurrentScan(current);
   }
 
   await setBadge('');
@@ -540,6 +547,9 @@ async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0, fo
  */
 async function checkAndRecoverStalledScan(forceRevive = false) {
   if (isRecovering) return;
+  // Never automatically revive unless explicitly requested or currently active
+  if (!isScanRunning && !forceRevive) return;
+
   try {
     const current = await getCurrentScan();
     if (!current || current.status !== 'running') return;
@@ -547,6 +557,15 @@ async function checkAndRecoverStalledScan(forceRevive = false) {
     const now = Date.now();
     const lastBeat = current.lastHeartbeat || current.startTime || 0;
     const idleMs = now - lastBeat;
+
+    // Abandon stale scans older than 30 seconds to prevent ghost runs
+    if (idleMs > 30000) {
+      current.status = 'cancelled';
+      await setCurrentScan(current);
+      try { await chrome.alarms.clear('scan_watchdog'); } catch {}
+      await setBadge('');
+      return;
+    }
 
     // If an in-memory scan is actively executing and has beaten within 12 seconds, it is healthy!
     if (isScanRunning && activeAbortController && !forceRevive) {
@@ -733,9 +752,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-// Profile / Browser Startup Listener
-chrome.runtime.onStartup.addListener(() => {
-  checkAndRecoverStalledScan();
+// Profile / Browser Startup Listener: Do NOT automatically start scans!
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    await chrome.alarms.clear('scan_watchdog');
+    const current = await getCurrentScan();
+    if (current && current.status === 'running') {
+      current.status = 'cancelled';
+      await setCurrentScan(current);
+    }
+  } catch {}
+  await setBadge('');
 });
 
 chrome.runtime.onInstalled.addListener(async () => {

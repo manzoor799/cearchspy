@@ -85,6 +85,9 @@
       input.focus();
       input.dispatchEvent(new Event('focus', { bubbles: true }));
       input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      try {
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: query }));
+      } catch {}
       input.dispatchEvent(new Event('change', { bubbles: true }));
       const lastChar = query.slice(-1);
       input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: lastChar }));
@@ -163,6 +166,7 @@
    */
   async function fetchSameOriginSuggest(query) {
     const endpoints = [
+      `/suggestions_ajax.php?search_query=${encodeURIComponent(query)}&search_type=all&version=1&pathname=%2F`,
       `/search/suggest?q=${encodeURIComponent(query)}&lang=en-US`,
       `/suggestions_ajax.php?search_query=${encodeURIComponent(query)}`,
     ];
@@ -186,12 +190,12 @@
 
         if (Array.isArray(data)) {
           if (typeof data[0] === 'string') return data;
-          return data.map(item => item?.query || item?.text || '').filter(Boolean);
+          return data.map(item => item?.query || item?.text || item?.suggestion || '').filter(Boolean);
         }
         if (data && typeof data === 'object') {
-          const list = data.results || data.suggestions || data.queries || [];
+          const list = data.suggestions || data.results || data.queries || data.items || [];
           if (Array.isArray(list) && list.length > 0) {
-            return list.map(item => (typeof item === 'string' ? item : item?.query || item?.text || '')).filter(Boolean);
+            return list.map(item => (typeof item === 'string' ? item : item?.query || item?.text || item?.suggestion || '')).filter(Boolean);
           }
         }
       } catch {}
@@ -409,9 +413,7 @@
           } else {
             const branchText = totalBranches > 1 ? ` (Branch ${branchIndex}/${totalBranches})` : '';
             showStatusIndicator(`E Keyword Spy: "${query}"${branchText}`);
-            if (message.typingDelayMs) {
-              await new Promise(r => setTimeout(r, message.typingDelayMs));
-            }
+            await new Promise(r => setTimeout(r, message.typingDelayMs || 150));
           }
 
           // Check again after typing in case challenge was triggered
