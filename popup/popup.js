@@ -187,7 +187,7 @@ async function loadSavedSettings() {
     elements.testModeToggle.checked = Boolean(settings.testMode);
   }
   if (elements.incognitoModeToggle) {
-    elements.incognitoModeToggle.checked = (settings.useIncognito !== false);
+    elements.incognitoModeToggle.checked = Boolean(settings.useIncognito);
   }
   if (elements.deepExpansionToggle) {
     elements.deepExpansionToggle.checked = (settings.deepExpansion !== false);
@@ -889,14 +889,18 @@ function bindEvents() {
   // Resume Scan Button
   if (elements.btnResumeScan) {
     elements.btnResumeScan.addEventListener('click', async () => {
-      showToast('Checking verification status...');
+      if (elements.captchaCard) elements.captchaCard.style.display = 'none';
+      if (elements.scanKeywordLabel && activeScanData) {
+        elements.scanKeywordLabel.textContent = `Scanning: "${activeScanData.branchName || activeScanData.currentSeed || activeScanData.keyword}"`;
+      }
+      showToast('Resuming scan execution...');
       try {
-        const res = await chrome.runtime.sendMessage({ type: 'RESUME_SCAN' });
+        const res = await chrome.runtime.sendMessage({ type: 'RESUME_SCAN', forceResume: true });
         if (res && res.stillChallenged) {
+          if (elements.captchaCard) elements.captchaCard.style.display = 'block';
           showToast(res.message || 'Verification challenge still detected on Etsy', 3500);
         } else if (res && res.success) {
-          if (elements.captchaCard) elements.captchaCard.style.display = 'none';
-          showToast('Verification resolved. Resuming scan...');
+          showToast('Scan resumed successfully!');
         }
       } catch (err) {
         showToast(`Resume error: ${err.message}`);

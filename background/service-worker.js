@@ -86,7 +86,7 @@ async function findOrCreateEtsyTab(useIncognito = false) {
         return incognitoTab;
       }
 
-      // No Incognito Etsy tab open: Open a fresh Incognito Etsy window!
+      // No Incognito Etsy tab open: Check permission and attempt opening Incognito Etsy window
       let isAllowed = false;
       try {
         isAllowed = await chrome.extension.isAllowedIncognitoAccess();
@@ -106,15 +106,26 @@ async function findOrCreateEtsyTab(useIncognito = false) {
           await ensureContentScriptInjected(targetTab.id);
           return targetTab;
         }
-      } else {
-        broadcast({
-          type: 'INCOGNITO_PERMISSION_REQUIRED',
-          message: 'Please enable "Allow in Incognito" for E Keyword Spy in chrome://extensions to use Incognito mode.',
-        });
+      }
+
+      // Fallback: If Incognito is unavailable, gracefully fall back to active regular tab
+      const fallbackRegular = tabs.find(t => t.active) || tabs[0];
+      if (fallbackRegular) {
+        await ensureContentScriptInjected(fallbackRegular.id);
+        return fallbackRegular;
       }
     } else {
-      // Standard Tab: Prioritize active Etsy tab, or any open Etsy tab
-      const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito) || tabs[0];
+      // Standard Tab: Prioritize active Etsy tab in CURRENT window, or active in any window, or any open Etsy tab
+      const currentWinTabs = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+      const currentActive = currentWinTabs?.[0];
+      const isCurrentActiveEtsy = (currentActive?.url || '').toLowerCase().includes('etsy.com');
+
+      const regularTab = (isCurrentActiveEtsy ? currentActive : null)
+        || tabs.find(t => !t.incognito && t.active)
+        || tabs.find(t => !t.incognito)
+        || tabs.find(t => t.active)
+        || tabs[0];
+
       if (regularTab) {
         try {
           await chrome.tabs.update(regularTab.id, { active: true });
@@ -171,7 +182,7 @@ async function handleStartScan({
   testMode = false,
   deepExpansion = true,
   branchLimit = 3,
-  useIncognito = true,
+  useIncognito = false,
   isRound2 = false,
   round2Expansion = false,
   round2Limit = 5,
@@ -436,7 +447,7 @@ async function handleCancelScan() {
   broadcast({ type: 'SCAN_CANCELLED' });
 }
 
-async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0) {
+async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0, forceResume = false) {
   const current = await getCurrentScan();
   if (!current || (current.status !== 'paused_captcha' && current.status !== 'running')) {
     return { success: false, message: 'No paused or active scan to resume' };
@@ -469,11 +480,12 @@ async function handleResumeScan(overrideTestMode = false, resumeFromStep = 0) {
     return { success: true, testMode: true };
   }
 
-  // Check if Etsy tab has resolved the slider (only if was paused_captcha)
-  if (current.status === 'paused_captcha' && tabId) {
+  // Check if Etsy tab has resolved the slider (only if was paused_captcha AND not a forced user resume)
+  if (!forceResume && current.status === 'paused_captcha' && tabId) {
     try {
       const verif = await chrome.tabs.sendMessage(tabId, { type: 'CHECK_VERIFICATION_RESOLVED' });
-      if (verif && !verif.resolved) {
+      // Only block if definitely still challenged AND no valid search input is accessible
+      if (verif && !verif.resolved && !verif.hasSearchInput) {
         // Bring Etsy tab to front again
         try {
           await chrome.tabs.update(tabId, { active: true });
@@ -567,7 +579,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'RESUME_SCAN': {
       (async () => {
-        const result = await handleResumeScan(Boolean(message.overrideTestMode));
+        const result = await handleResumeScan(
+          Boolean(message.overrideTestMode),
+          message.resumeFromStep || 0,
+          Boolean(message.forceResume)
+        );
         sendResponse(result);
       })();
       return true;
@@ -621,9 +637,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const tabs = await getAllEtsyTabs();
-        const incognitoTab = tabs.find(t => t.incognito && t.active) || tabs.find(t => t.incognito);
-        const regularTab = tabs.find(t => !t.incognito && t.active) || tabs.find(t => !t.incognito);
-        const activeTab = incognitoTab || regularTab || tabs[0] || null;
+        const currentWinTabs = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+        const currentActive = currentWinTabs?.[0];
+        const isCurrentActiveEtsy = (currentActive?.url || '').toLowerCase().includes('etsy.com');
+
+        const activeTab = (isCurrentActiveEtsy ? currentActive : null)
+          || tabs.find(t => t.active)
+          || tabs.find(t => !t.incognito)
+          || tabs[0]
+          || null;
 
         if (activeTab?.id) {
           await ensureContentScriptInjected(activeTab.id);

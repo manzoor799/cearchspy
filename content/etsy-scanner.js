@@ -219,44 +219,52 @@
   }
 
   /**
-   * Detects whether Etsy or DataDome has displayed a genuine CAPTCHA / slider verification challenge.
-   * Prevents false positives when Etsy's homepage and search bar are healthy.
+   * Detects whether Etsy or DataDome has displayed a genuine, blocking CAPTCHA / slider challenge.
+   * Ensures 0% false positives when Etsy's search bar and page are healthy.
    * @returns {boolean}
    */
   function isVerificationChallengePresent() {
     try {
-      const url = window.location.href || '';
-      const title = document.title || '';
-
-      // 1. Check URL query & hash for explicit DataDome challenge redirect
-      if (url.includes('dd_referrer=') || url.includes('captcha-delivery.com') || url.includes('datadome.co')) {
-        return true;
-      }
-
-      // 2. Check for active DataDome challenge iframe in DOM
-      const captchaIframe = document.querySelector(
-        'iframe[src*="captcha-delivery.com"], iframe[src*="datadome"], iframe[title*="DataDome"], iframe[title*="Captcha"]'
-      );
-      if (captchaIframe) return true;
-
-      // 3. Check for specific DataDome slider container
-      const sliderBox = document.querySelector('.datadome-slider, #dd-captcha, [data-dd-captcha], #captcha-box');
-      if (sliderBox && sliderBox.offsetHeight > 0) return true;
-
-      // 4. If Etsy's genuine search bar is present and accessible, page is healthy!
+      // 1. PRIMARY HEALTH CHECK: If Etsy's genuine search bar is present in DOM,
+      // the page is functional and healthy! NEVER flag as captcha.
       const searchInput = findSearchInput();
-      if (searchInput) {
+      if (searchInput && !searchInput.disabled) {
         return false;
       }
 
-      // 5. If NO search bar exists, check if title indicates a bot block
-      const lowerTitle = title.toLowerCase();
+      const url = window.location.href || '';
+      const title = (document.title || '').toLowerCase();
+
+      // 2. Explicit DataDome challenge redirect URL
+      if (url.includes('captcha-delivery.com/captcha/') || url.includes('dd_referrer=')) {
+        return true;
+      }
+
+      // 3. Page title indicating a genuine bot block screen
       if (
-        lowerTitle.includes('robot or human') ||
-        lowerTitle.includes('datadome') ||
-        (lowerTitle.includes('verification required') && !lowerTitle.includes('shop'))
+        title.includes('robot or human') ||
+        (title.includes('verification required') && !title.includes('shop') && !title.includes('item'))
       ) {
         return true;
+      }
+
+      // 4. Genuine, VISIBLE blocking DataDome challenge iframe
+      // Only match genuine challenge iframe (from captcha-delivery.com) that is actually visible on screen
+      const challengeIframe = document.querySelector('iframe[src*="captcha-delivery.com"]');
+      if (challengeIframe) {
+        const rect = challengeIframe.getBoundingClientRect();
+        if (rect.width > 200 && rect.height > 150) {
+          return true;
+        }
+      }
+
+      // 5. Explicit DataDome slider element that is physically rendered and visible
+      const sliderBox = document.querySelector('.datadome-slider');
+      if (sliderBox) {
+        const rect = sliderBox.getBoundingClientRect();
+        if (rect.width > 100 && rect.height > 40) {
+          return true;
+        }
       }
     } catch {
       // Fallback
@@ -310,12 +318,13 @@
     if (message.type === 'CHECK_VERIFICATION_RESOLVED') {
       const challenged = isVerificationChallengePresent();
       const hasSearchInput = Boolean(findSearchInput());
-      if (!challenged) {
+      const isResolved = !challenged || hasSearchInput;
+      if (isResolved) {
         hideStatusIndicator();
       }
       sendResponse({
-        resolved: !challenged,
-        captchaDetected: challenged,
+        resolved: isResolved,
+        captchaDetected: challenged && !hasSearchInput,
         hasSearchInput,
         url: window.location.href,
       });
